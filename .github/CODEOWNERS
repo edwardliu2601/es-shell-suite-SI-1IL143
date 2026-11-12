@@ -1,0 +1,28 @@
+# CODEOWNERS - define quien debe aprobar los PRs de cada carpeta
+# Formato: <ruta>   <@usuario-github>
+# Documentacion: https://docs.github.com/articles/about-code-owners
+
+# Grupo 1 - Editor de preguntas y atributos
+/grupo_01_questions/   @edwardliu2601
+
+# Grupos 2 a 12 - pendientes de asignar coordinador
+# /grupo_02_rules/        @coordinador-g2
+# /grupo_03_auditor/      @coordinador-g3
+# /grupo_04_schema/       @coordinador-g4
+# /grupo_05_forward/      @coordinador-g5
+# /grupo_06_backward/     @coordinador-g6
+# /grupo_07_uncertainty/  @coordinador-g7
+# /grupo_08_explainer/    @coordinador-g8
+# /grupo_09_reporter/     @coordinador-g9
+# /grupo_10_ui/           @coordinador-g10
+# /grupo_11_storage/      @coordinador-g11
+# /grupo_12_api/          @coordinador-g12
+
+# Contratos JSON - requieren aprobacion del coordinador del Grupo 4
+# /contracts/             @coordinador-g4
+
+# Documentacion comun y configuracion
+/docs/                 @edwardliu2601
+/README.md             @edwardliu2601
+/CONTRIBUTING.md       @edwardliu2601
+/.github/              @edwardliu2601
