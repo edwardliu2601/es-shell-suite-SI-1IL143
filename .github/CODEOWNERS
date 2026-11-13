@@ -4,19 +4,20 @@
 
 # Grupo 1 - Editor de preguntas y atributos
 /grupo_01_questions/   @edwardliu2601
+/grupo_02_rules/        @Fu-wian
+/grupo_03_auditor/      @kebimoons
+/grupo_04_schema/       @servivoarm
+/grupo_09_reporter/     @brayantchiru10
+/grupo_12_api/          @Shazam15
 
-# Grupos 2 a 12 - pendientes de asignar coordinador
-# /grupo_02_rules/        @coordinador-g2
-# /grupo_03_auditor/      @coordinador-g3
-# /grupo_04_schema/       @coordinador-g4
+# Grupos pendientes de asignar coordinador
 # /grupo_05_forward/      @coordinador-g5
 # /grupo_06_backward/     @coordinador-g6
 # /grupo_07_uncertainty/  @coordinador-g7
 # /grupo_08_explainer/    @coordinador-g8
-# /grupo_09_reporter/     @coordinador-g9
 # /grupo_10_ui/           @coordinador-g10
 # /grupo_11_storage/      @coordinador-g11
-# /grupo_12_api/          @coordinador-g12
+
 
 # Contratos JSON - requieren aprobacion del coordinador del Grupo 4
 # /contracts/             @coordinador-g4
