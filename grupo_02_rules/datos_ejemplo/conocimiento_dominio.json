@@ -1,0 +1,75 @@
+{
+  "meta": {
+    "project_title": "Ejemplo del Grupo 2 (basado en los atributos del Grupo 1)",
+    "version": "0.1",
+    "author_group": "Grupo 2 - RuleEditor (ejemplo)"
+  },
+  "attributes": [
+    {
+      "id": "materia",
+      "name": "Tipo de asignatura solicitada",
+      "type": "categorical",
+      "question": "Seleccione el tipo de asignatura que desea matricular:",
+      "options": [
+        "Obligatoria",
+        "Electiva",
+        "Trabajo de Graduacion"
+      ]
+    },
+    {
+      "id": "promedio",
+      "name": "Promedio Ponderado Acumulado",
+      "type": "numeric",
+      "question": "Cual es el promedio ponderado del estudiante?",
+      "range": [
+        0.0,
+        3.0
+      ],
+      "help_text": "Escala 0.0 a 3.0. Puede consultarlo en el portal estudiantil."
+    },
+    {
+      "id": "nombre_tesis",
+      "name": "Nombre del trabajo de graduacion",
+      "type": "text",
+      "question": "Cual es el titulo del trabajo de graduacion?",
+      "depends_on": {
+        "attribute_id": "materia",
+        "operator": "==",
+        "value": "Trabajo de Graduacion"
+      }
+    },
+    {
+      "id": "dictamen",
+      "name": "Dictamen del sistema",
+      "type": "categorical",
+      "options": [
+        "Elegible",
+        "No elegible"
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule_01",
+      "description": "Elegibilidad para trabajo de graduación",
+      "priority": 10,
+      "conditions": [
+        {
+          "attribute_id": "materia",
+          "operator": "==",
+          "value": "Trabajo de Graduacion"
+        },
+        {
+          "attribute_id": "promedio",
+          "operator": ">=",
+          "value": 2.0
+        }
+      ],
+      "conclusion": {
+        "attribute_id": "dictamen",
+        "value": "Elegible"
+      },
+      "explanation_template": "Cumple las condiciones de elegibilidad."
+    }
+  ]
+}
