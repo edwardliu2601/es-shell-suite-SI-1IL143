@@ -1,0 +1,10 @@
+{
+  "session_id": "session-test-001",
+  "facts": {
+    "materia": "Trabajo de Graduacion",
+    "promedio": 2.5,
+    "creditos": 130
+  },
+  "derived_facts": {},
+  "execution_trace": []
+}
