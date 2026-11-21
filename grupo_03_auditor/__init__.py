@@ -1,0 +1,41 @@
+"""Grupo 3 — Auditor de Base de Conocimiento (ES-Shell Suite)."""
+
+from .esb_auditor import (
+    CAT_CICLO,
+    CAT_CONTRADICCION,
+    CAT_ESQUEMA,
+    CAT_INALCANZABLE,
+    CAT_REDUNDANCIA,
+    OPERADORES_ORDEN,
+    OPERADORES_VALIDOS,
+    SEVERIDAD_ERROR,
+    SEVERIDAD_INFO,
+    SEVERIDAD_WARNING,
+    TIPOS_VALIDOS,
+    Hallazgo,
+    KBAuditor,
+    ReporteAuditoria,
+    formatear_reporte_markdown,
+    formatear_tabla_decision_consola,
+    formatear_tabla_decision_markdown,
+)
+
+__all__ = [
+    "CAT_CICLO",
+    "CAT_CONTRADICCION",
+    "CAT_ESQUEMA",
+    "CAT_INALCANZABLE",
+    "CAT_REDUNDANCIA",
+    "Hallazgo",
+    "KBAuditor",
+    "OPERADORES_ORDEN",
+    "OPERADORES_VALIDOS",
+    "ReporteAuditoria",
+    "SEVERIDAD_ERROR",
+    "SEVERIDAD_INFO",
+    "SEVERIDAD_WARNING",
+    "TIPOS_VALIDOS",
+    "formatear_reporte_markdown",
+    "formatear_tabla_decision_consola",
+    "formatear_tabla_decision_markdown",
+]

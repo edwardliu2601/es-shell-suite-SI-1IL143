@@ -1,0 +1,570 @@
+{
+  "es_valida": false,
+  "estado": "INVALIDA",
+  "meta": {
+    "project_title": "Base de conocimiento con inconsistencias intencionales (ejemplo)",
+    "version": "1.0",
+    "author_group": "Grupo 3 - KBAuditor"
+  },
+  "resumen": {
+    "es_valida": false,
+    "estado": "INVALIDA",
+    "total_atributos": 4,
+    "total_reglas": 10,
+    "total_hallazgos": 15,
+    "conteo_severidad": {
+      "ERROR": 9,
+      "WARNING": 6,
+      "INFO": 0
+    },
+    "conteo_categoria": {
+      "esquema_invalido": 2,
+      "contradiccion": 5,
+      "redundancia": 3,
+      "condicion_inalcanzable": 5
+    }
+  },
+  "hallazgos": [
+    {
+      "categoria": "esquema_invalido",
+      "severidad": "ERROR",
+      "mensaje": "Validación de esquema (SchemaManager): $.rules[7].conditions[0].value: El valor 'Doctorado' no está entre las opciones permitidas.",
+      "reglas": [],
+      "atributos": [],
+      "detalles": {
+        "origen": "SchemaManager",
+        "error_bruto": "$.rules[7].conditions[0].value: El valor 'Doctorado' no está entre las opciones permitidas."
+      }
+    },
+    {
+      "categoria": "esquema_invalido",
+      "severidad": "ERROR",
+      "mensaje": "Validación de esquema (SchemaManager): $.rules[9].conditions[0].attribute_id: El atributo 'atributo_fantasma' no existe.",
+      "reglas": [],
+      "atributos": [],
+      "detalles": {
+        "origen": "SchemaManager",
+        "error_bruto": "$.rules[9].conditions[0].attribute_id: El atributo 'atributo_fantasma' no existe."
+      }
+    },
+    {
+      "categoria": "contradiccion",
+      "severidad": "ERROR",
+      "mensaje": "Conflicto entre 'regla_conflicto_1' y 'regla_conflicto_2': sus condiciones son solapables, pero concluyen valores distintos para 'dictamen' ('Aprobado' vs 'Revision'). Ambas tienen la misma prioridad (20), lo que produce una ambigüedad irresoluble.",
+      "reglas": [
+        "regla_conflicto_1",
+        "regla_conflicto_2"
+      ],
+      "atributos": [
+        "dictamen",
+        "modalidad",
+        "promedio"
+      ],
+      "detalles": {
+        "tipo": "solapables",
+        "atributo_conclusion": "dictamen",
+        "valores_conflicto": {
+          "regla_conflicto_1": "Aprobado",
+          "regla_conflicto_2": "Revision"
+        },
+        "prioridades": {
+          "regla_conflicto_1": 20,
+          "regla_conflicto_2": 20
+        },
+        "empate_prioridad": true
+      }
+    },
+    {
+      "categoria": "contradiccion",
+      "severidad": "WARNING",
+      "mensaje": "Conflicto entre 'regla_conflicto_1' y 'regla_conflicto_desempatado': sus condiciones son solapables, pero concluyen valores distintos para 'dictamen' ('Aprobado' vs 'Rechazado'). Prioridades distintas (regla_conflicto_1=20, regla_conflicto_desempatado=10); la regla 'regla_conflicto_1' desempata por mayor prioridad, pero conviene revisar el solapamiento.",
+      "reglas": [
+        "regla_conflicto_1",
+        "regla_conflicto_desempatado"
+      ],
+      "atributos": [
+        "dictamen",
+        "modalidad",
+        "promedio"
+      ],
+      "detalles": {
+        "tipo": "solapables",
+        "atributo_conclusion": "dictamen",
+        "valores_conflicto": {
+          "regla_conflicto_1": "Aprobado",
+          "regla_conflicto_desempatado": "Rechazado"
+        },
+        "prioridades": {
+          "regla_conflicto_1": 20,
+          "regla_conflicto_desempatado": 10
+        },
+        "empate_prioridad": false
+      }
+    },
+    {
+      "categoria": "contradiccion",
+      "severidad": "ERROR",
+      "mensaje": "Conflicto entre 'regla_conflicto_2' y 'regla_duplicada': sus condiciones son solapables, pero concluyen valores distintos para 'dictamen' ('Revision' vs 'Aprobado'). Ambas tienen la misma prioridad (20), lo que produce una ambigüedad irresoluble.",
+      "reglas": [
+        "regla_conflicto_2",
+        "regla_duplicada"
+      ],
+      "atributos": [
+        "dictamen",
+        "modalidad",
+        "promedio"
+      ],
+      "detalles": {
+        "tipo": "solapables",
+        "atributo_conclusion": "dictamen",
+        "valores_conflicto": {
+          "regla_conflicto_2": "Revision",
+          "regla_duplicada": "Aprobado"
+        },
+        "prioridades": {
+          "regla_conflicto_2": 20,
+          "regla_duplicada": 20
+        },
+        "empate_prioridad": true
+      }
+    },
+    {
+      "categoria": "contradiccion",
+      "severidad": "WARNING",
+      "mensaje": "Conflicto entre 'regla_conflicto_desempatado' y 'regla_duplicada': sus condiciones son solapables, pero concluyen valores distintos para 'dictamen' ('Rechazado' vs 'Aprobado'). Prioridades distintas (regla_conflicto_desempatado=10, regla_duplicada=20); la regla 'regla_duplicada' desempata por mayor prioridad, pero conviene revisar el solapamiento.",
+      "reglas": [
+        "regla_conflicto_desempatado",
+        "regla_duplicada"
+      ],
+      "atributos": [
+        "dictamen",
+        "modalidad",
+        "promedio"
+      ],
+      "detalles": {
+        "tipo": "solapables",
+        "atributo_conclusion": "dictamen",
+        "valores_conflicto": {
+          "regla_conflicto_desempatado": "Rechazado",
+          "regla_duplicada": "Aprobado"
+        },
+        "prioridades": {
+          "regla_conflicto_desempatado": 10,
+          "regla_duplicada": 20
+        },
+        "empate_prioridad": false
+      }
+    },
+    {
+      "categoria": "contradiccion",
+      "severidad": "WARNING",
+      "mensaje": "Conflicto entre 'regla_conflicto_desempatado' y 'regla_subsumida': sus condiciones son solapables, pero concluyen valores distintos para 'dictamen' ('Rechazado' vs 'Aprobado'). Prioridades distintas (regla_conflicto_desempatado=10, regla_subsumida=15); la regla 'regla_subsumida' desempata por mayor prioridad, pero conviene revisar el solapamiento.",
+      "reglas": [
+        "regla_conflicto_desempatado",
+        "regla_subsumida"
+      ],
+      "atributos": [
+        "dictamen",
+        "modalidad",
+        "promedio"
+      ],
+      "detalles": {
+        "tipo": "solapables",
+        "atributo_conclusion": "dictamen",
+        "valores_conflicto": {
+          "regla_conflicto_desempatado": "Rechazado",
+          "regla_subsumida": "Aprobado"
+        },
+        "prioridades": {
+          "regla_conflicto_desempatado": 10,
+          "regla_subsumida": 15
+        },
+        "empate_prioridad": false
+      }
+    },
+    {
+      "categoria": "redundancia",
+      "severidad": "WARNING",
+      "mensaje": "Reglas duplicadas 'regla_conflicto_1' y 'regla_duplicada': tienen condiciones lógicamente equivalentes y concluyen lo mismo ('dictamen' = 'Aprobado').",
+      "reglas": [
+        "regla_conflicto_1",
+        "regla_duplicada"
+      ],
+      "atributos": [
+        "dictamen",
+        "modalidad",
+        "promedio"
+      ],
+      "detalles": {
+        "tipo": "duplicada",
+        "atributo_conclusion": "dictamen",
+        "valor_conclusion": "Aprobado",
+        "prioridades": {
+          "regla_conflicto_1": 20,
+          "regla_duplicada": 20
+        }
+      }
+    },
+    {
+      "categoria": "redundancia",
+      "severidad": "WARNING",
+      "mensaje": "Subsunción detectada: la regla 'regla_conflicto_1' (más general) subsume a 'regla_subsumida' con la misma conclusión ('dictamen' = 'Aprobado'), haciendo a 'regla_subsumida' redundante.",
+      "reglas": [
+        "regla_conflicto_1",
+        "regla_subsumida"
+      ],
+      "atributos": [
+        "dictamen",
+        "modalidad",
+        "promedio"
+      ],
+      "detalles": {
+        "tipo": "subsumida",
+        "regla_general": "regla_conflicto_1",
+        "regla_redundante": "regla_subsumida",
+        "atributo_conclusion": "dictamen",
+        "valor_conclusion": "Aprobado",
+        "prioridades": {
+          "regla_conflicto_1": 20,
+          "regla_subsumida": 15
+        }
+      }
+    },
+    {
+      "categoria": "redundancia",
+      "severidad": "WARNING",
+      "mensaje": "Subsunción detectada: la regla 'regla_duplicada' (más general) subsume a 'regla_subsumida' con la misma conclusión ('dictamen' = 'Aprobado'), haciendo a 'regla_subsumida' redundante.",
+      "reglas": [
+        "regla_duplicada",
+        "regla_subsumida"
+      ],
+      "atributos": [
+        "dictamen",
+        "modalidad",
+        "promedio"
+      ],
+      "detalles": {
+        "tipo": "subsumida",
+        "regla_general": "regla_duplicada",
+        "regla_redundante": "regla_subsumida",
+        "atributo_conclusion": "dictamen",
+        "valor_conclusion": "Aprobado",
+        "prioridades": {
+          "regla_duplicada": 20,
+          "regla_subsumida": 15
+        }
+      }
+    },
+    {
+      "categoria": "condicion_inalcanzable",
+      "severidad": "ERROR",
+      "mensaje": "Regla 'regla_contradiccion_interna' muerta por contradicción interna sobre 'promedio': ningún valor puede satisfacer simultáneamente (promedio >= 2.5 Y promedio < 2.0).",
+      "reglas": [
+        "regla_contradiccion_interna"
+      ],
+      "atributos": [
+        "promedio"
+      ],
+      "detalles": {
+        "motivo": "contradiccion_interna",
+        "expresion": "promedio >= 2.5 Y promedio < 2.0"
+      }
+    },
+    {
+      "categoria": "condicion_inalcanzable",
+      "severidad": "ERROR",
+      "mensaje": "Regla 'regla_fuera_de_rango': la condición 'promedio > 4.0' es imposible de satisfacer dentro del rango declarado [0.0, 3.0].",
+      "reglas": [
+        "regla_fuera_de_rango"
+      ],
+      "atributos": [
+        "promedio"
+      ],
+      "detalles": {
+        "motivo": "fuera_de_rango",
+        "rango": [
+          0.0,
+          3.0
+        ],
+        "valor": 4.0
+      }
+    },
+    {
+      "categoria": "condicion_inalcanzable",
+      "severidad": "ERROR",
+      "mensaje": "Regla 'regla_opcion_invalida': el valor 'Doctorado' en 'modalidad' no existe en las opciones permitidas ['Presencial', 'Virtual', 'Semipresencial'].",
+      "reglas": [
+        "regla_opcion_invalida"
+      ],
+      "atributos": [
+        "modalidad"
+      ],
+      "detalles": {
+        "motivo": "opcion_invalida",
+        "opciones": [
+          "Presencial",
+          "Virtual",
+          "Semipresencial"
+        ],
+        "valor": "Doctorado"
+      }
+    },
+    {
+      "categoria": "condicion_inalcanzable",
+      "severidad": "ERROR",
+      "mensaje": "Regla 'regla_atributo_huerfano': el atributo 'beca_interna' se usa en una condición, pero no tiene 'question' para preguntarse al usuario ni es concluido por ninguna regla (hecho imposible de obtener).",
+      "reglas": [
+        "regla_atributo_huerfano"
+      ],
+      "atributos": [
+        "beca_interna"
+      ],
+      "detalles": {
+        "motivo": "atributo_sin_fuente"
+      }
+    },
+    {
+      "categoria": "condicion_inalcanzable",
+      "severidad": "ERROR",
+      "mensaje": "Regla 'regla_atributo_inexistente': la condición referencia al atributo inexistente 'atributo_fantasma' (no está declarado en 'attributes' ni es derivado por ninguna regla).",
+      "reglas": [
+        "regla_atributo_inexistente"
+      ],
+      "atributos": [
+        "atributo_fantasma"
+      ],
+      "detalles": {
+        "motivo": "atributo_inexistente"
+      }
+    }
+  ],
+  "tabla_decision": {
+    "atributos_condicion": [
+      "modalidad",
+      "promedio",
+      "beca_interna",
+      "atributo_fantasma"
+    ],
+    "atributos_conclusion": [
+      "dictamen"
+    ],
+    "filas": [
+      {
+        "regla_id": "regla_conflicto_1",
+        "descripcion": "Aprueba con promedio >= 2.0",
+        "prioridad": 20,
+        "condiciones": {
+          "modalidad": "== 'Presencial'",
+          "promedio": ">= 2.0",
+          "beca_interna": "—",
+          "atributo_fantasma": "—"
+        },
+        "conclusion_atributo": "dictamen",
+        "conclusion_valor": "Aprobado",
+        "conclusion": "dictamen = 'Aprobado'",
+        "estado": "CONFLICTO(ERROR), CONFLICTO(WARNING), REDUNDANTE(WARNING) [con regla_conflicto_2, regla_conflicto_desempatado, regla_duplicada, regla_subsumida]",
+        "alertas": [
+          "CONFLICTO(ERROR)",
+          "CONFLICTO(WARNING)",
+          "REDUNDANTE(WARNING)"
+        ],
+        "reglas_relacionadas": [
+          "regla_conflicto_2",
+          "regla_conflicto_desempatado",
+          "regla_duplicada",
+          "regla_subsumida"
+        ]
+      },
+      {
+        "regla_id": "regla_conflicto_2",
+        "descripcion": "En revisión si promedio <= 2.3 (misma prioridad: conflicto ERROR)",
+        "prioridad": 20,
+        "condiciones": {
+          "modalidad": "== 'Presencial'",
+          "promedio": "<= 2.3",
+          "beca_interna": "—",
+          "atributo_fantasma": "—"
+        },
+        "conclusion_atributo": "dictamen",
+        "conclusion_valor": "Revision",
+        "conclusion": "dictamen = 'Revision'",
+        "estado": "CONFLICTO(ERROR) [con regla_conflicto_1, regla_duplicada]",
+        "alertas": [
+          "CONFLICTO(ERROR)"
+        ],
+        "reglas_relacionadas": [
+          "regla_conflicto_1",
+          "regla_duplicada"
+        ]
+      },
+      {
+        "regla_id": "regla_conflicto_desempatado",
+        "descripcion": "Rechaza en modalidad virtual (conflicto WARNING por prioridad distinta)",
+        "prioridad": 10,
+        "condiciones": {
+          "modalidad": "in ['Presencial', 'Virtual']",
+          "promedio": ">= 2.8",
+          "beca_interna": "—",
+          "atributo_fantasma": "—"
+        },
+        "conclusion_atributo": "dictamen",
+        "conclusion_valor": "Rechazado",
+        "conclusion": "dictamen = 'Rechazado'",
+        "estado": "CONFLICTO(WARNING) [con regla_conflicto_1, regla_duplicada, regla_subsumida]",
+        "alertas": [
+          "CONFLICTO(WARNING)"
+        ],
+        "reglas_relacionadas": [
+          "regla_conflicto_1",
+          "regla_duplicada",
+          "regla_subsumida"
+        ]
+      },
+      {
+        "regla_id": "regla_duplicada",
+        "descripcion": "Duplicado lógico de regla_conflicto_1",
+        "prioridad": 20,
+        "condiciones": {
+          "modalidad": "== 'Presencial'",
+          "promedio": ">= 2.0",
+          "beca_interna": "—",
+          "atributo_fantasma": "—"
+        },
+        "conclusion_atributo": "dictamen",
+        "conclusion_valor": "Aprobado",
+        "conclusion": "dictamen = 'Aprobado'",
+        "estado": "CONFLICTO(ERROR), CONFLICTO(WARNING), REDUNDANTE(WARNING) [con regla_conflicto_2, regla_conflicto_desempatado, regla_conflicto_1, regla_subsumida]",
+        "alertas": [
+          "CONFLICTO(ERROR)",
+          "CONFLICTO(WARNING)",
+          "REDUNDANTE(WARNING)"
+        ],
+        "reglas_relacionadas": [
+          "regla_conflicto_2",
+          "regla_conflicto_desempatado",
+          "regla_conflicto_1",
+          "regla_subsumida"
+        ]
+      },
+      {
+        "regla_id": "regla_subsumida",
+        "descripcion": "Más específica que regla_conflicto_1 con la misma conclusión",
+        "prioridad": 15,
+        "condiciones": {
+          "modalidad": "== 'Presencial'",
+          "promedio": ">= 2.5",
+          "beca_interna": "—",
+          "atributo_fantasma": "—"
+        },
+        "conclusion_atributo": "dictamen",
+        "conclusion_valor": "Aprobado",
+        "conclusion": "dictamen = 'Aprobado'",
+        "estado": "CONFLICTO(WARNING), REDUNDANTE(WARNING) [con regla_conflicto_desempatado, regla_conflicto_1, regla_duplicada]",
+        "alertas": [
+          "CONFLICTO(WARNING)",
+          "REDUNDANTE(WARNING)"
+        ],
+        "reglas_relacionadas": [
+          "regla_conflicto_desempatado",
+          "regla_conflicto_1",
+          "regla_duplicada"
+        ]
+      },
+      {
+        "regla_id": "regla_contradiccion_interna",
+        "descripcion": "Regla muerta con contradicción interna en promedio",
+        "prioridad": 10,
+        "condiciones": {
+          "modalidad": "—",
+          "promedio": ">= 2.5 Y < 2.0",
+          "beca_interna": "—",
+          "atributo_fantasma": "—"
+        },
+        "conclusion_atributo": "dictamen",
+        "conclusion_valor": "Aprobado",
+        "conclusion": "dictamen = 'Aprobado'",
+        "estado": "INALCANZABLE(ERROR)",
+        "alertas": [
+          "INALCANZABLE(ERROR)"
+        ],
+        "reglas_relacionadas": []
+      },
+      {
+        "regla_id": "regla_fuera_de_rango",
+        "descripcion": "Condición numérica fuera del rango [0.0, 3.0]",
+        "prioridad": 10,
+        "condiciones": {
+          "modalidad": "—",
+          "promedio": "> 4.0",
+          "beca_interna": "—",
+          "atributo_fantasma": "—"
+        },
+        "conclusion_atributo": "dictamen",
+        "conclusion_valor": "Aprobado",
+        "conclusion": "dictamen = 'Aprobado'",
+        "estado": "INALCANZABLE(ERROR)",
+        "alertas": [
+          "INALCANZABLE(ERROR)"
+        ],
+        "reglas_relacionadas": []
+      },
+      {
+        "regla_id": "regla_opcion_invalida",
+        "descripcion": "Valor categórico inexistente en options",
+        "prioridad": 10,
+        "condiciones": {
+          "modalidad": "== 'Doctorado'",
+          "promedio": "—",
+          "beca_interna": "—",
+          "atributo_fantasma": "—"
+        },
+        "conclusion_atributo": "dictamen",
+        "conclusion_valor": "Revision",
+        "conclusion": "dictamen = 'Revision'",
+        "estado": "INALCANZABLE(ERROR)",
+        "alertas": [
+          "INALCANZABLE(ERROR)"
+        ],
+        "reglas_relacionadas": []
+      },
+      {
+        "regla_id": "regla_atributo_huerfano",
+        "descripcion": "Usa un atributo sin question ni derivación",
+        "prioridad": 10,
+        "condiciones": {
+          "modalidad": "—",
+          "promedio": "—",
+          "beca_interna": "== true",
+          "atributo_fantasma": "—"
+        },
+        "conclusion_atributo": "dictamen",
+        "conclusion_valor": "Aprobado",
+        "conclusion": "dictamen = 'Aprobado'",
+        "estado": "INALCANZABLE(ERROR)",
+        "alertas": [
+          "INALCANZABLE(ERROR)"
+        ],
+        "reglas_relacionadas": []
+      },
+      {
+        "regla_id": "regla_atributo_inexistente",
+        "descripcion": "Referencia a un atributo que no existe",
+        "prioridad": 10,
+        "condiciones": {
+          "modalidad": "—",
+          "promedio": "—",
+          "beca_interna": "—",
+          "atributo_fantasma": "== 'X'"
+        },
+        "conclusion_atributo": "dictamen",
+        "conclusion_valor": "Rechazado",
+        "conclusion": "dictamen = 'Rechazado'",
+        "estado": "INALCANZABLE(ERROR)",
+        "alertas": [
+          "INALCANZABLE(ERROR)"
+        ],
+        "reglas_relacionadas": []
+      }
+    ]
+  }
+}

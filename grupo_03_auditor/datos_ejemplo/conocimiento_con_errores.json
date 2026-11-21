@@ -1,0 +1,250 @@
+{
+  "meta": {
+    "project_title": "Base de conocimiento con inconsistencias intencionales (ejemplo)",
+    "version": "1.0",
+    "author_group": "Grupo 3 - KBAuditor"
+  },
+  "attributes": [
+    {
+      "id": "modalidad",
+      "name": "Modalidad de estudio",
+      "type": "categorical",
+      "question": "¿Cuál es la modalidad?",
+      "options": [
+        "Presencial",
+        "Virtual",
+        "Semipresencial"
+      ]
+    },
+    {
+      "id": "promedio",
+      "name": "Promedio académico",
+      "type": "numeric",
+      "question": "¿Cuál es el promedio académico (0.0 a 3.0)?",
+      "range": [
+        0.0,
+        3.0
+      ]
+    },
+    {
+      "id": "beca_interna",
+      "name": "Indicador de beca interna (sin pregunta ni regla)",
+      "type": "boolean"
+    },
+    {
+      "id": "dictamen",
+      "name": "Dictamen académico",
+      "type": "categorical",
+      "options": [
+        "Aprobado",
+        "Rechazado",
+        "Revision"
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "regla_conflicto_1",
+      "description": "Aprueba con promedio >= 2.0",
+      "priority": 20,
+      "conditions": [
+        {
+          "attribute_id": "modalidad",
+          "operator": "==",
+          "value": "Presencial"
+        },
+        {
+          "attribute_id": "promedio",
+          "operator": ">=",
+          "value": 2.0
+        }
+      ],
+      "conclusion": {
+        "attribute_id": "dictamen",
+        "value": "Aprobado"
+      },
+      "explanation_template": "Promedio suficiente para aprobación."
+    },
+    {
+      "id": "regla_conflicto_2",
+      "description": "En revisión si promedio <= 2.3 (misma prioridad: conflicto ERROR)",
+      "priority": 20,
+      "conditions": [
+        {
+          "attribute_id": "modalidad",
+          "operator": "==",
+          "value": "Presencial"
+        },
+        {
+          "attribute_id": "promedio",
+          "operator": "<=",
+          "value": 2.3
+        }
+      ],
+      "conclusion": {
+        "attribute_id": "dictamen",
+        "value": "Revision"
+      },
+      "explanation_template": "Requiere revisión en el tramo 2.0 a 2.3."
+    },
+    {
+      "id": "regla_conflicto_desempatado",
+      "description": "Rechaza en modalidad virtual (conflicto WARNING por prioridad distinta)",
+      "priority": 10,
+      "conditions": [
+        {
+          "attribute_id": "modalidad",
+          "operator": "in",
+          "value": [
+            "Presencial",
+            "Virtual"
+          ]
+        },
+        {
+          "attribute_id": "promedio",
+          "operator": ">=",
+          "value": 2.8
+        }
+      ],
+      "conclusion": {
+        "attribute_id": "dictamen",
+        "value": "Rechazado"
+      },
+      "explanation_template": "Regla con menor prioridad que solapa con regla_conflicto_1."
+    },
+    {
+      "id": "regla_duplicada",
+      "description": "Duplicado lógico de regla_conflicto_1",
+      "priority": 20,
+      "conditions": [
+        {
+          "attribute_id": "modalidad",
+          "operator": "==",
+          "value": "Presencial"
+        },
+        {
+          "attribute_id": "promedio",
+          "operator": ">=",
+          "value": 2.0
+        }
+      ],
+      "conclusion": {
+        "attribute_id": "dictamen",
+        "value": "Aprobado"
+      },
+      "explanation_template": "Condiciones equivalentes a regla_conflicto_1."
+    },
+    {
+      "id": "regla_subsumida",
+      "description": "Más específica que regla_conflicto_1 con la misma conclusión",
+      "priority": 15,
+      "conditions": [
+        {
+          "attribute_id": "modalidad",
+          "operator": "==",
+          "value": "Presencial"
+        },
+        {
+          "attribute_id": "promedio",
+          "operator": ">=",
+          "value": 2.5
+        }
+      ],
+      "conclusion": {
+        "attribute_id": "dictamen",
+        "value": "Aprobado"
+      },
+      "explanation_template": "Subsumida por regla_conflicto_1."
+    },
+    {
+      "id": "regla_contradiccion_interna",
+      "description": "Regla muerta con contradicción interna en promedio",
+      "priority": 10,
+      "conditions": [
+        {
+          "attribute_id": "promedio",
+          "operator": ">=",
+          "value": 2.5
+        },
+        {
+          "attribute_id": "promedio",
+          "operator": "<",
+          "value": 2.0
+        }
+      ],
+      "conclusion": {
+        "attribute_id": "dictamen",
+        "value": "Aprobado"
+      },
+      "explanation_template": "Nunca podrá activarse."
+    },
+    {
+      "id": "regla_fuera_de_rango",
+      "description": "Condición numérica fuera del rango [0.0, 3.0]",
+      "priority": 10,
+      "conditions": [
+        {
+          "attribute_id": "promedio",
+          "operator": ">",
+          "value": 4.0
+        }
+      ],
+      "conclusion": {
+        "attribute_id": "dictamen",
+        "value": "Aprobado"
+      },
+      "explanation_template": "Fuera de rango."
+    },
+    {
+      "id": "regla_opcion_invalida",
+      "description": "Valor categórico inexistente en options",
+      "priority": 10,
+      "conditions": [
+        {
+          "attribute_id": "modalidad",
+          "operator": "==",
+          "value": "Doctorado"
+        }
+      ],
+      "conclusion": {
+        "attribute_id": "dictamen",
+        "value": "Revision"
+      },
+      "explanation_template": "Opción no declarada."
+    },
+    {
+      "id": "regla_atributo_huerfano",
+      "description": "Usa un atributo sin question ni derivación",
+      "priority": 10,
+      "conditions": [
+        {
+          "attribute_id": "beca_interna",
+          "operator": "==",
+          "value": true
+        }
+      ],
+      "conclusion": {
+        "attribute_id": "dictamen",
+        "value": "Aprobado"
+      },
+      "explanation_template": "Atributo imposible de obtener."
+    },
+    {
+      "id": "regla_atributo_inexistente",
+      "description": "Referencia a un atributo que no existe",
+      "priority": 10,
+      "conditions": [
+        {
+          "attribute_id": "atributo_fantasma",
+          "operator": "==",
+          "value": "X"
+        }
+      ],
+      "conclusion": {
+        "attribute_id": "dictamen",
+        "value": "Rechazado"
+      },
+      "explanation_template": "Referencia rota."
+    }
+  ]
+}

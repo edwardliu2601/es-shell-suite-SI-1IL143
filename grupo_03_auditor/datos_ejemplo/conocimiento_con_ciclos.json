@@ -1,0 +1,189 @@
+{
+  "meta": {
+    "project_title": "Base de conocimiento con ciclos en reglas y depends_on (ejemplo)",
+    "version": "1.0",
+    "author_group": "Grupo 3 - KBAuditor"
+  },
+  "attributes": [
+    {
+      "id": "nivel_riesgo",
+      "name": "Nivel de riesgo",
+      "type": "categorical",
+      "options": [
+        "Bajo",
+        "Alto"
+      ]
+    },
+    {
+      "id": "estado_a",
+      "name": "Estado intermedio A",
+      "type": "categorical",
+      "options": [
+        "Activo",
+        "Inactivo"
+      ]
+    },
+    {
+      "id": "estado_b",
+      "name": "Estado intermedio B",
+      "type": "categorical",
+      "options": [
+        "Activo",
+        "Inactivo"
+      ]
+    },
+    {
+      "id": "fase_1",
+      "name": "Fase 1",
+      "type": "categorical",
+      "options": [
+        "Listo",
+        "Pendiente"
+      ]
+    },
+    {
+      "id": "fase_2",
+      "name": "Fase 2",
+      "type": "categorical",
+      "options": [
+        "Listo",
+        "Pendiente"
+      ]
+    },
+    {
+      "id": "fase_3",
+      "name": "Fase 3",
+      "type": "categorical",
+      "options": [
+        "Listo",
+        "Pendiente"
+      ]
+    },
+    {
+      "id": "pregunta_x",
+      "name": "Pregunta X",
+      "type": "boolean",
+      "question": "¿Aplica condición X?",
+      "depends_on": {
+        "attribute_id": "pregunta_y",
+        "operator": "==",
+        "value": true
+      }
+    },
+    {
+      "id": "pregunta_y",
+      "name": "Pregunta Y",
+      "type": "boolean",
+      "question": "¿Aplica condición Y?",
+      "depends_on": {
+        "attribute_id": "pregunta_x",
+        "operator": "==",
+        "value": true
+      }
+    }
+  ],
+  "rules": [
+    {
+      "id": "r_autociclo",
+      "description": "Ciclo directo: nivel_riesgo depende de sí mismo",
+      "priority": 10,
+      "conditions": [
+        {
+          "attribute_id": "nivel_riesgo",
+          "operator": "==",
+          "value": "Bajo"
+        }
+      ],
+      "conclusion": {
+        "attribute_id": "nivel_riesgo",
+        "value": "Alto"
+      },
+      "explanation_template": "Autociclo intencional."
+    },
+    {
+      "id": "r_a_hacia_b",
+      "description": "Paso A -> B en ciclo de 2 reglas",
+      "priority": 10,
+      "conditions": [
+        {
+          "attribute_id": "estado_a",
+          "operator": "==",
+          "value": "Activo"
+        }
+      ],
+      "conclusion": {
+        "attribute_id": "estado_b",
+        "value": "Activo"
+      },
+      "explanation_template": "Deriva estado_b desde estado_a."
+    },
+    {
+      "id": "r_b_hacia_a",
+      "description": "Paso B -> A en ciclo de 2 reglas",
+      "priority": 10,
+      "conditions": [
+        {
+          "attribute_id": "estado_b",
+          "operator": "==",
+          "value": "Activo"
+        }
+      ],
+      "conclusion": {
+        "attribute_id": "estado_a",
+        "value": "Activo"
+      },
+      "explanation_template": "Deriva estado_a desde estado_b."
+    },
+    {
+      "id": "r_fase_1_a_2",
+      "description": "Paso 1 -> 2 en ciclo de 3 reglas",
+      "priority": 10,
+      "conditions": [
+        {
+          "attribute_id": "fase_1",
+          "operator": "==",
+          "value": "Listo"
+        }
+      ],
+      "conclusion": {
+        "attribute_id": "fase_2",
+        "value": "Listo"
+      },
+      "explanation_template": "Fase 1 habilita fase 2."
+    },
+    {
+      "id": "r_fase_2_a_3",
+      "description": "Paso 2 -> 3 en ciclo de 3 reglas",
+      "priority": 10,
+      "conditions": [
+        {
+          "attribute_id": "fase_2",
+          "operator": "==",
+          "value": "Listo"
+        }
+      ],
+      "conclusion": {
+        "attribute_id": "fase_3",
+        "value": "Listo"
+      },
+      "explanation_template": "Fase 2 habilita fase 3."
+    },
+    {
+      "id": "r_fase_3_a_1",
+      "description": "Paso 3 -> 1 en ciclo de 3 reglas",
+      "priority": 10,
+      "conditions": [
+        {
+          "attribute_id": "fase_3",
+          "operator": "==",
+          "value": "Listo"
+        }
+      ],
+      "conclusion": {
+        "attribute_id": "fase_1",
+        "value": "Listo"
+      },
+      "explanation_template": "Fase 3 cierra el ciclo hacia fase 1."
+    }
+  ]
+}
