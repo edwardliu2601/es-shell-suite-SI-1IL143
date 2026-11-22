@@ -107,4 +107,34 @@ class XAIExplainer:
 
         if regla.get("explanation_template"):
             lineas.append(regla["explanation_template"])
+        otras = self._reglas_que_tambien_respaldan(wm, attribute_id, derivado["value"], rule_id)
+        if otras:
+            lineas.append("También respaldan esta conclusión: " + ", ".join(otras) + ".")
         return lineas
+
+    def _reglas_que_tambien_respaldan(self, wm: dict, attribute_id: str, valor, rule_id: str) -> list[str]:
+        """Otras reglas con la misma conclusion cuyas condiciones tambien se cumplen.
+
+        G5 registra una sola regla por hecho; G7 puede combinar varias en el FC.
+        Sin esta linea el HOW citaria una regla y el FC saldria de varias.
+        """
+        conocidos = {**wm.get("facts", {}),
+                     **{a: d["value"] for a, d in wm.get("derived_facts", {}).items()}}
+        return [r["id"] for r in self.rules.values()
+                if r["id"] != rule_id
+                and r["conclusion"]["attribute_id"] == attribute_id
+                and r["conclusion"]["value"] == valor
+                and all(c["attribute_id"] in conocidos
+                        and _cumple(c["operator"], conocidos[c["attribute_id"]], c["value"])
+                        for c in r["conditions"])]
+
+
+def _cumple(operador: str, izquierda, derecha) -> bool:
+    """Evalua una condicion con los operadores del contrato (==, !=, >, <, >=, <=, in)."""
+    try:
+        return {"==": lambda: izquierda == derecha, "!=": lambda: izquierda != derecha,
+                ">": lambda: izquierda > derecha, "<": lambda: izquierda < derecha,
+                ">=": lambda: izquierda >= derecha, "<=": lambda: izquierda <= derecha,
+                "in": lambda: izquierda in derecha}[operador]()
+    except (TypeError, KeyError):
+        return False
