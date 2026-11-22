@@ -64,7 +64,7 @@ class ReportGenerator:
         titulo = conocimiento.get("meta", {}).get("project_title", "Sistema experto")
         sesion = dictamen.get("session_id") or memoria.get("session_id") or "sin identificador"
 
-        lineas = [f"# Informe de consulta: {titulo}", "", f"**Sesión:** {sesion}", ""]
+        lineas = [f"# Dictamen {sesion}", "", f"**Sistema experto:** {titulo}", ""]
         lineas += self._seccion_conclusion(dictamen)
         lineas += self._seccion_datos(memoria, atributos)
         lineas += self._seccion_derivados(memoria, atributos)
