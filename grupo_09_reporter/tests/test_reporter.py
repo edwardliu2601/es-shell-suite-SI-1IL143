@@ -57,7 +57,8 @@ def rutas(tmp_path):
 
 def test_informe_completo(rutas):
     texto = ReportGenerator(*rutas).generar_markdown()
-    assert "# Informe de consulta: Sistema Experto de Evaluacion Academica UTP" in texto
+    assert texto.startswith("# Dictamen sess_2026_10123")
+    assert "**Sistema experto:** Sistema Experto de Evaluacion Academica UTP" in texto
     assert "**Resultado:** Elegible" in texto
     assert "**Nivel de certeza:** 1.0" in texto
     assert "Promedio Ponderado Acumulado (promedio): 2.25" in texto
@@ -70,7 +71,7 @@ def test_informe_completo(rutas):
 
 def test_guardar_reporte(rutas, tmp_path):
     destino = ReportGenerator(*rutas).guardar_reporte(tmp_path / "salida" / "informe.md")
-    assert destino.read_text(encoding="utf-8").startswith("# Informe de consulta")
+    assert destino.read_text(encoding="utf-8").startswith("# Dictamen sess_2026_10123")
 
 
 def test_solo_con_dictamen(tmp_path):
