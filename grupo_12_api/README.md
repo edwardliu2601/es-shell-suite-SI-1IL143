@@ -2,21 +2,35 @@
 
 Archivo `esb_api.py`, servicio FastAPI. Coordinador: Samuel Díaz (@Shazam15).
 
-Este módulo expone el shell experto por HTTP para el perfil de integrador o desarrollador externo. Cubre tres operaciones: cargar una base de conocimiento, ejecutar una consulta y pedir el dictamen con sus explicaciones HOW/WHY. La API no razona por su cuenta. Recibe la petición, llama al módulo del grupo que corresponde y devuelve el resultado con la forma de los contratos JSON de la sección 4.2.
+Este módulo expone el shell experto por HTTP para el perfil de integrador o desarrollador externo. Cubre tres operaciones: cargar una base de conocimiento, ejecutar una consulta y pedir el dictamen con sus explicaciones HOW/WHY. La API no razona por su cuenta. Recibe la petición, llama al módulo del grupo que corresponde y devuelve el resultado con la forma de los contratos de `contracts/`.
 
 ## Estado
 
-Stub del 14 de noviembre. Todas las rutas están declaradas y documentadas en `/docs`, y responden con la forma final de los contratos. Las bases de conocimiento y las sesiones se guardan en memoria. La inferencia, el dictamen y la explicación HOW todavía devuelven los ejemplos de la sección 4.2 (`datos_ejemplo/`), y `/salud` marca como `simulado` cada módulo que aún no está integrado. Las rutas y los cuerpos de petición quedan sujetos al congelamiento de contratos del 16 de noviembre.
+Integrado con los módulos que ya están en `develop`. `GET /salud` muestra en cada momento cuáles se usan de verdad (`real`) y cuáles se reemplazan por un respaldo propio (`simulado`).
+
+| Grupo | Módulo | Estado | Uso en la API |
+|---|---|---|---|
+| G4 | `SchemaManager` | real | Valida la base (`POST /conocimiento`) y los hechos (`POST /consultas`, `POST /hechos`) con los esquemas de `contracts/` |
+| G5 | `ForwardEngine` | real | `POST /inferir` |
+| G8 | `XAIExplainer` | real | HOW, WHY, traza y las explicaciones del dictamen |
+| G9 | `ReportGenerator` | simulado | Todavía es un stub; la API genera el reporte por su cuenta |
+| G6 | `BackwardEngine` | simulado | Sin código; una sesión con `motor: "atras"` usa el motor hacia adelante |
+| G7 | `UncertaintyEngine` | simulado | Sin código; `certainty_score` toma el `certainty_factor` del hecho o 1.0 |
+| G11 | `ESBConverter` | simulado | Sin código; bases y sesiones se guardan en memoria |
+
+Si un módulo real deja de importarse, la API sigue funcionando con su respaldo, y `/salud` lo indica.
 
 ## Estructura
 
 | Archivo | Contenido |
 |---|---|
 | `esb_api.py` | Aplicación FastAPI y rutas. Solo traduce HTTP a llamadas del servicio. |
-| `servicio.py` | `ServicioESB`, la lógica de negocio, que no depende de FastAPI. Aquí se conectarán los módulos de los demás grupos. |
+| `servicio.py` | `ServicioESB`, la lógica de la consulta (sesiones, siguiente pregunta, dictamen). No depende de FastAPI. |
+| `adaptadores.py` | `Integraciones`, el único lugar que importa los módulos de otros grupos, con su respaldo. |
 | `modelos.py` | Modelos Pydantic de los tres contratos y de los cuerpos propios de la API. |
-| `datos_ejemplo/` | Los tres JSON de la sección 4.2. Se usarán hasta que exista `contracts/`. |
-| `tests/test_api.py` | Pruebas con `TestClient`. |
+| `datos_ejemplo/` | Los tres JSON de la sección 4.2 de la guía (también los usa G4 en sus pruebas de integración). |
+| `tests/test_api.py` | Pruebas por endpoint con los módulos reales. |
+| `tests/test_e2e.py` | Escenario obligatorio de la sección 6 recorrido por HTTP. |
 
 ## Instalación y ejecución
 
@@ -29,65 +43,94 @@ pip install -r grupo_12_api/requirements.txt
 uvicorn grupo_12_api.esb_api:app --reload
 ```
 
-La documentación interactiva queda en http://127.0.0.1:8000/docs (Swagger) y http://127.0.0.1:8000/redoc. Al iniciar se precarga la base de ejemplo con el id `kb_ejemplo`.
+La documentación interactiva queda en http://127.0.0.1:8000/docs (Swagger) y http://127.0.0.1:8000/redoc. Al iniciar se precargan dos bases:
+
+- `kb_academico`: la base de la demo (calificaciones y repetición de asignaturas), leída de `grupo_04_schema/ejemplos/conocimiento_dominio.json`.
+- `kb_ejemplo`: la base de la sección 4.2 de la guía.
 
 ## Endpoints
 
-| Método y ruta | Qué hace | Respuesta | Módulo que usará |
-|---|---|---|---|
-| `GET /salud` | Estado del servicio y de los módulos integrados | `Salud` | — |
-| `POST /conocimiento` | Carga y valida un `conocimiento_dominio.json` | `kb_id` y resumen | G4, G11 |
-| `GET /conocimiento/{kb_id}` | Devuelve la base cargada | `conocimiento_dominio.json` | G11 |
-| `GET /conocimiento/{kb_id}/preguntas` | Atributos con su pregunta, tipo, opciones y rango | lista de `Pregunta` | G1 |
-| `POST /consultas` | Inicia una sesión (`kb_id`, `motor`: `adelante` o `atras`, `hechos`) | `session_id` | G5, G6 |
-| `POST /consultas/{session_id}/hechos` | Registra datos del usuario | `memoria_trabajo.json` | G5, G6 |
-| `GET /consultas/{session_id}/siguiente-pregunta` | Próximo dato que pide el motor, con su WHY | `SiguientePregunta` | G6, G8 |
-| `POST /consultas/{session_id}/inferir` | Ejecuta el motor | `memoria_trabajo.json` | G5, G6, G7 |
-| `GET /consultas/{session_id}/memoria` | Memoria de trabajo actual | `memoria_trabajo.json` | — |
-| `GET /consultas/{session_id}/dictamen` | Resultado final con HOW/WHY | `dictamen_salida.json` | G7, G8 |
-| `GET /consultas/{session_id}/reporte?formato=md\|html` | Reporte descargable | Markdown o HTML | G9 |
-| `GET /consultas/{session_id}/explicacion/how?atributo=` | ¿Cómo se llegó a ese valor? | `explanation_how` | G8 |
-| `GET /consultas/{session_id}/explicacion/why?atributo=&regla=` | ¿Por qué se pide ese dato? | `explanation_why` | G8 |
-| `GET /consultas/{session_id}/traza` | Reglas aplicadas en orden | lista de pasos | G8 |
+| Método y ruta | Qué hace | Respuesta |
+|---|---|---|
+| `GET /salud` | Estado del servicio y de los módulos | `Salud` |
+| `POST /conocimiento` | Carga y valida un `conocimiento_dominio.json` | `kb_id` y resumen |
+| `GET /conocimiento/{kb_id}` | Devuelve la base cargada | `conocimiento_dominio.json` |
+| `GET /conocimiento/{kb_id}/preguntas` | Atributos con su pregunta, tipo, opciones y rango | lista de `Pregunta` |
+| `POST /consultas` | Inicia una sesión (`kb_id`, `motor`: `adelante` o `atras`, `hechos`) | `session_id` |
+| `POST /consultas/{session_id}/hechos` | Registra datos del usuario y descarta las conclusiones anteriores | `memoria_trabajo.json` |
+| `GET /consultas/{session_id}/siguiente-pregunta` | Próximo dato que conviene pedir, con su WHY | `SiguientePregunta` |
+| `POST /consultas/{session_id}/inferir` | Ejecuta el motor | `memoria_trabajo.json` + `halted_reason` |
+| `GET /consultas/{session_id}/memoria` | Memoria de trabajo actual | `memoria_trabajo.json` |
+| `GET /consultas/{session_id}/dictamen` | Resultado final con HOW/WHY | `dictamen_salida.json` |
+| `GET /consultas/{session_id}/reporte?formato=md\|html` | Reporte descargable | Markdown o HTML |
+| `GET /consultas/{session_id}/explicacion/how?atributo=` | ¿Cómo se llegó a ese valor? | `explanation_how` |
+| `GET /consultas/{session_id}/explicacion/why?atributo=&regla=` | ¿Por qué se pide ese dato? | `explanation_why` |
+| `GET /consultas/{session_id}/traza` | Reglas aplicadas en orden | lista de pasos |
 
-Errores: `404` cuando la base, la sesión, el atributo o la regla no existe; `409` cuando se infiere sin hechos o se pide el dictamen antes de inferir; `422` cuando el cuerpo no cumple el contrato. El campo `detail` trae el mensaje en español.
+`siguiente-pregunta` recorre las reglas de mayor a menor prioridad y descarta las que ya no pueden cumplirse con los hechos conocidos. Devuelve el primer atributo que falta y que el usuario puede responder. Respeta `depends_on`, por lo que no ofrece una pregunta condicional mientras no se cumpla su condición. Por ejemplo, con `tipo_consulta = "Repeticion"` pide `nota_obtenida` y no `puntaje_final`.
 
-Ejemplo del escenario de la sección 6 con `curl`:
+El dictamen toma el hecho derivado `dictamen` o, si la base usa otro nombre, el último hecho derivado. Su `explanation_why` explica el último dato que se le preguntó al usuario dentro de la regla que produjo el resultado.
+
+### Errores
+
+| Código | Cuándo | Cuerpo |
+|---|---|---|
+| `404` | La base, la sesión, el atributo o la regla no existe, o el atributo no tiene valor | `{"detail": "..."}` |
+| `409` | Se infiere sin hechos, o se pide el dictamen cuando ninguna regla se activó | `{"detail": "..."}` |
+| `422` | La base o los hechos no cumplen el contrato | `{"detail": "...", "errores": [...]}` con los mensajes de G4 |
+
+Ejemplo de un hecho fuera de rango:
+
+```json
+{"detail": "Los hechos no son válidos para la base de conocimiento.",
+ "errores": ["$.facts.puntaje_final: El valor 150 está fuera del rango [0, 100]."]}
+```
+
+### Ejemplo con `curl` (caso de la demo)
 
 ```bash
 curl -X POST localhost:8000/consultas -H 'Content-Type: application/json' \
-     -d '{"kb_id": "kb_ejemplo", "motor": "adelante", "hechos": {"materia": "Trabajo de Graduacion"}}'
+     -d '{"kb_id": "kb_academico", "hechos": {"tipo_consulta": "Calificacion"}}'
 # {"session_id": "sess_2026_00001", ...}
+curl localhost:8000/consultas/sess_2026_00001/siguiente-pregunta
+# pide "puntaje_final"
 curl -X POST localhost:8000/consultas/sess_2026_00001/hechos -H 'Content-Type: application/json' \
-     -d '{"hechos": {"promedio": 2.25}}'
+     -d '{"hechos": {"puntaje_final": 95}}'
 curl -X POST localhost:8000/consultas/sess_2026_00001/inferir
 curl localhost:8000/consultas/sess_2026_00001/dictamen
+# "final_outcome": "Calificación A - Sobresaliente", por la regla reg_calificacion_a
 ```
 
 ## Dependencias con otros grupos
 
-| Grupo | Qué necesita G12 | Para qué |
+| Grupo | Qué usa G12 | Firma |
 |---|---|---|
-| G4 | `SchemaManager` con un método para validar `conocimiento_dominio.json` | Validar la base en `POST /conocimiento` además de los modelos Pydantic |
-| G5, G6 | Firma pública de `ForwardEngine` y `BackwardEngine`: cómo se construyen, cómo se ejecutan y qué devuelven | `POST /inferir` |
-| G6 | Cómo informa el motor hacia atrás el próximo dato que necesita y la regla que evalúa | `GET /siguiente-pregunta` |
-| G7 | Cómo se obtiene el `certainty_score` final | Dictamen |
-| G8 | `XAIExplainer` (ya publicado en `grupo-08/stub-explicador`) | HOW, WHY y traza |
-| G9 | `ReportGenerator` y los formatos que soporta | `GET /reporte` |
-| G11 | `ESBConverter` para guardar y cargar bases y sesiones | Persistencia de `/conocimiento` y `/consultas` |
+| G4 | `SchemaManager(carpeta_esquemas=contracts/)` | `validar_datos(datos, tipo)`, `validar_memoria(memoria, conocimiento)` → `{"valido", "errores"}` |
+| G5 | `ForwardEngine` y sus funciones de E/S | `parse_knowledge_base`, `parse_working_memory`, `ForwardEngine(kb).run(wm)`, `working_memory_to_dict` |
+| G8 | `XAIExplainer(knowledge_base)` | `explain_how`, `explain_why`, `explain_trace` |
+| G9 | `ReportGenerator(ruta_conocimiento, ruta_memoria, ruta_dictamen)` | `generar_markdown()`; la API le pasa archivos temporales |
 
-| Grupo | Qué recibe de G12 |
-|---|---|
-| G10 | Opcionalmente, la API como backend de la interfaz web |
-| Integradores externos | El servicio documentado en `/docs` |
+### Cómo conectar G6, G7 y G11
 
-## Observaciones para la revisión de contratos (antes del 16 nov. al mediodía)
+Todo pasa por `adaptadores.py`. Cuando el grupo publique su clase en `develop`:
 
-1. Ningún contrato dice quién genera `session_id`. La API lo genera con el formato `sess_AAAA_NNNNN` del ejemplo; G10 debería usar el mismo si crea sesiones por su cuenta.
-2. Hace falta un formato acordado para la "pregunta pendiente" del motor hacia atrás (atributo y `rule_id`). G8 pidió lo mismo para que el WHY cite la regla correcta.
-3. `explanation_why` es una sola cadena. Se mantiene así en la API, alineado con la observación 1 de G8.
-4. Conviene que cada sesión guarde la `meta.version` de la base con la que se ejecutó, para que G8 y G11 la reconstruyan sin ambigüedad.
-5. Los modelos de contrato aceptan campos adicionales y no restringen `type` ni `operator` mientras G1, G2 y G4 no cierren la lista de valores válidos.
+1. Agregar un `_cargar_gX()` que la importe con `try/except ImportError`.
+2. Guardarla en `Integraciones.__init__` y cambiar su entrada de `estado()` a `marca(...)`.
+3. Exponer un método pequeño: `inferir_atras` (G6), `combinar_certeza` (G7) o `guardar_sesion` / `cargar_sesion` (G11). Luego llamarlo desde el método correspondiente de `servicio.py`.
+4. Agregar una prueba en `tests/test_api.py` con el módulo real y otra con `Integraciones(deshabilitar={"GX"})`.
+
+## Observaciones de contratos
+
+Resueltas con los contratos congelados:
+
+- Los tipos de atributo (`numeric`, `categorical`, `boolean`, `text`) y los operadores (`==`, `!=`, `>`, `<`, `>=`, `<=`, `in`) quedaron cerrados. `modelos.py` los usa.
+- `explanation_why` se mantiene como una sola cadena.
+- `session_id` es una cadena libre. La API genera `sess_AAAA_NNNNN`.
+
+Pendientes:
+
+- Formato con que G6 informará el próximo dato y la regla que evalúa. Mientras tanto, la API calcula `siguiente-pregunta` con las reglas de la base.
+- Guardar con cada sesión la `meta.version` de la base con que se ejecutó, cuando G11 publique su módulo.
 
 ## Pruebas
 
@@ -97,4 +140,13 @@ Desde la raíz del repositorio:
 python -m pytest grupo_12_api
 ```
 
-Cubren el recorrido completo de una consulta (cargar base, iniciar, registrar hechos, siguiente pregunta, inferir, traza, dictamen, HOW/WHY y reporte), cuerpos que no cumplen el contrato, bases, sesiones, atributos y reglas inexistentes, y una consulta en la que no se activa ninguna regla (dictamen pedido antes de inferir o inferencia sin hechos).
+Cubren:
+
+- Caso normal con la base académica: calificación A y F, y repetición con D. La memoria y el dictamen se validan con `SchemaManager.validar_conjunto`.
+- HOW, WHY, traza, siguiente pregunta y reporte.
+- Datos inválidos: bases rechazadas por G4 o por la forma del contrato, hechos fuera de rango, opciones inexistentes, tipos incorrectos y atributos no declarados.
+- Reglas que no se activan: 200 sin hechos derivados al inferir, y 409 al pedir el dictamen.
+- Reglas en conflicto: gana la regla de mayor prioridad.
+- Funcionamiento con respaldo cuando falta G4, G5 o G8.
+
+`tests/test_e2e.py` recorre los 8 pasos del escenario obligatorio con un caso documentado: puntaje 95 → "Calificación A - Sobresaliente".
