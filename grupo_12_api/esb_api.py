@@ -22,9 +22,9 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from .modelos import (BaseCargada, ConocimientoDominio, ConsultaCreada, DictamenSalida,
                       ExplicacionHow, ExplicacionWhy, HechosEntrada, MemoriaTrabajo,
                       NuevaConsulta, Pregunta, Salud, SiguientePregunta, Traza)
-from .servicio import MODULOS, EstadoInvalido, NoEncontrado, ServicioESB
+from .servicio import ContratoInvalido, EstadoInvalido, NoEncontrado, ServicioESB
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 app = FastAPI(
     title="ES-Shell Suite · API REST",
@@ -34,8 +34,10 @@ app = FastAPI(
         "(`conocimiento_dominio.json`), ejecutar una consulta sobre su memoria de "
         "trabajo (`memoria_trabajo.json`) y obtener el dictamen con sus "
         "explicaciones HOW/WHY (`dictamen_salida.json`).\n\n"
-        "Se precarga la base de ejemplo de la sección 4.2 de la guía con el id "
-        "`kb_ejemplo`."
+        "Valida con SchemaManager (G4), infiere con ForwardEngine (G5) y explica con "
+        "XAIExplainer (G8). `GET /salud` indica qué módulos están conectados.\n\n"
+        "Bases precargadas: `kb_academico` (base de la demo, de G4) y `kb_ejemplo` "
+        "(sección 4.2 de la guía)."
     ),
     openapi_tags=[
         {"name": "Servicio", "description": "Estado del servicio."},
@@ -58,6 +60,11 @@ async def _no_encontrado(_: Request, exc: NoEncontrado) -> JSONResponse:
     return JSONResponse(status_code=404, content={"detail": str(exc)})
 
 
+@app.exception_handler(ContratoInvalido)
+async def _contrato_invalido(_: Request, exc: ContratoInvalido) -> JSONResponse:
+    return JSONResponse(status_code=422, content={"detail": str(exc), "errores": exc.errores})
+
+
 @app.exception_handler(EstadoInvalido)
 async def _estado_invalido(_: Request, exc: EstadoInvalido) -> JSONResponse:
     return JSONResponse(status_code=409, content={"detail": str(exc)})
@@ -65,29 +72,31 @@ async def _estado_invalido(_: Request, exc: EstadoInvalido) -> JSONResponse:
 
 Servicio = Depends(obtener_servicio)
 ERRORES_SESION = {404: {"description": "La sesión no existe."}}
+ERROR_CONTRATO = {422: {"description": "No cumple el contrato; `errores` trae el detalle de G4."}}
 
 
 # --- Servicio ---
 
 @app.get("/salud", response_model=Salud, tags=["Servicio"], summary="Estado del servicio")
-def salud() -> dict:
+def salud(servicio: ServicioESB = Servicio) -> dict:
     """Indica si el servicio responde y qué módulos de otros grupos están integrados."""
-    return {"estado": "ok", "version": VERSION, "modulos": MODULOS}
+    return {"estado": "ok", "version": VERSION, "modulos": servicio.estado_modulos()}
 
 
 # --- Conocimiento ---
 
 @app.post("/conocimiento", response_model=BaseCargada, status_code=201, tags=["Conocimiento"],
-          summary="Cargar una base de conocimiento")
+          summary="Cargar una base de conocimiento", responses=ERROR_CONTRATO)
 def cargar_conocimiento(base: ConocimientoDominio, servicio: ServicioESB = Servicio) -> dict:
-    """Recibe un `conocimiento_dominio.json`, lo valida contra el contrato y devuelve su `kb_id`."""
-    kb_id, kb = servicio.cargar_conocimiento(base)
+    """Recibe un `conocimiento_dominio.json`, lo valida contra el contrato (G4) y devuelve su `kb_id`."""
+    kb_id, kb = servicio.cargar_conocimiento(base.model_dump(exclude_unset=True))
     return {"kb_id": kb_id, "project_title": kb["meta"]["project_title"],
             "version": kb["meta"]["version"], "atributos": len(kb["attributes"]),
             "reglas": len(kb["rules"])}
 
 
-@app.get("/conocimiento/{kb_id}", response_model=ConocimientoDominio, tags=["Conocimiento"],
+@app.get("/conocimiento/{kb_id}", response_model=ConocimientoDominio,
+         response_model_exclude_unset=True, tags=["Conocimiento"],
          summary="Obtener una base de conocimiento",
          responses={404: {"description": "La base no existe."}})
 def obtener_conocimiento(kb_id: str, servicio: ServicioESB = Servicio) -> dict:
@@ -106,17 +115,25 @@ def listar_preguntas(kb_id: str, servicio: ServicioESB = Servicio) -> list[dict]
 
 @app.post("/consultas", response_model=ConsultaCreada, status_code=201, tags=["Consultas"],
           summary="Iniciar una consulta",
-          responses={404: {"description": "La base no existe."}})
+          responses={404: {"description": "La base no existe."}, **ERROR_CONTRATO})
 def iniciar_consulta(datos: NuevaConsulta, servicio: ServicioESB = Servicio) -> dict:
-    """Crea una sesión sobre `kb_id` con el motor indicado y los hechos iniciales."""
+    """Crea una sesión sobre `kb_id` con el motor indicado y los hechos iniciales.
+
+    Los hechos se validan contra la base (tipo, opciones y rango). Mientras G6 no
+    publique su motor, `atras` usa el encadenamiento hacia adelante.
+    """
     return servicio.iniciar_consulta(datos.kb_id, datos.motor, datos.hechos)
 
 
-@app.post("/consultas/{session_id}/hechos", response_model=MemoriaTrabajo, tags=["Consultas"],
-          summary="Registrar hechos", responses=ERRORES_SESION)
+@app.post("/consultas/{session_id}/hechos", response_model=MemoriaTrabajo,
+          response_model_exclude_unset=True, tags=["Consultas"],
+          summary="Registrar hechos", responses={**ERRORES_SESION, **ERROR_CONTRATO})
 def registrar_hechos(session_id: str, datos: HechosEntrada,
                      servicio: ServicioESB = Servicio) -> dict:
-    """Agrega a la memoria de trabajo los datos que ingresó el usuario."""
+    """Agrega a la memoria de trabajo los datos que ingresó el usuario.
+
+    Se descartan las conclusiones anteriores; se recalculan al volver a inferir.
+    """
     return servicio.registrar_hechos(session_id, datos.hechos)
 
 
@@ -127,23 +144,31 @@ def siguiente_pregunta(session_id: str, servicio: ServicioESB = Servicio) -> dic
     return servicio.siguiente_pregunta(session_id)
 
 
-@app.post("/consultas/{session_id}/inferir", response_model=MemoriaTrabajo, tags=["Consultas"],
+@app.post("/consultas/{session_id}/inferir", response_model=MemoriaTrabajo,
+          response_model_exclude_unset=True, tags=["Consultas"],
           summary="Ejecutar la inferencia",
           responses={**ERRORES_SESION, 409: {"description": "La sesión no tiene hechos."}})
 def inferir(session_id: str, servicio: ServicioESB = Servicio) -> dict:
-    """Ejecuta el motor de la sesión y devuelve la memoria de trabajo actualizada."""
-    return servicio.inferir(session_id)
+    """Ejecuta el motor (G5) y devuelve la memoria de trabajo actualizada.
+
+    Incluye `halted_reason`: `quiescence` cuando no quedan reglas por activar.
+    Si ninguna regla se activó, `derived_facts` queda vacío.
+    """
+    memoria, motivo = servicio.inferir(session_id)
+    return {**memoria, "halted_reason": motivo}
 
 
-@app.get("/consultas/{session_id}/memoria", response_model=MemoriaTrabajo, tags=["Consultas"],
+@app.get("/consultas/{session_id}/memoria", response_model=MemoriaTrabajo,
+         response_model_exclude_unset=True, tags=["Consultas"],
          summary="Obtener la memoria de trabajo", responses=ERRORES_SESION)
 def obtener_memoria(session_id: str, servicio: ServicioESB = Servicio) -> dict:
     return servicio.obtener_memoria(session_id)
 
 
-@app.get("/consultas/{session_id}/dictamen", response_model=DictamenSalida, tags=["Consultas"],
+@app.get("/consultas/{session_id}/dictamen", response_model=DictamenSalida,
+         response_model_exclude_unset=True, tags=["Consultas"],
          summary="Obtener el dictamen",
-         responses={**ERRORES_SESION, 409: {"description": "Todavía no se ha inferido."}})
+         responses={**ERRORES_SESION, 409: {"description": "Ninguna regla se ha activado."}})
 def obtener_dictamen(session_id: str, servicio: ServicioESB = Servicio) -> dict:
     """Resultado final, certeza y explicaciones HOW/WHY (`dictamen_salida.json`)."""
     return servicio.obtener_dictamen(session_id)
