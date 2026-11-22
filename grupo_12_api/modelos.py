@@ -1,22 +1,22 @@
 """Modelos de datos de la API del Grupo 12.
 
-La primera parte reproduce los tres contratos de la seccion 4.2 de la guia
-(conocimiento_dominio.json, memoria_trabajo.json y dictamen_salida.json). Los
-nombres de campo se dejan en ingles porque asi los fija el contrato; no se
-cambian sin acuerdo de los 12 coordinadores.
+La primera parte reproduce los tres contratos congelados en contracts/
+(conocimiento_dominio, memoria_trabajo y dictamen_salida). Los nombres de
+campo se dejan en ingles porque asi los fija el contrato; no se cambian sin
+acuerdo de los 12 coordinadores.
 
 La segunda parte son los cuerpos de peticion y respuesta propios de la API,
 que no forman parte de los contratos comunes.
 
-Los modelos de contrato aceptan campos adicionales (extra="allow") para no
-perder informacion si G4 agrega campos antes del congelamiento. La validacion
-fina del esquema corresponde a SchemaManager (G4).
+Los modelos de contrato aceptan campos adicionales (extra="allow"), igual que
+los esquemas. Las comprobaciones semanticas (opciones de un categorico, valor
+de "in", ids repetidos, rangos) las hace SchemaManager (G4) en servicio.py.
 """
 
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -30,22 +30,29 @@ class _Contrato(BaseModel):
 class Meta(_Contrato):
     project_title: str
     version: str
-    author_group: str | None = None
+    author_group: str
+
+
+Operador = Literal["==", "!=", ">", "<", ">=", "<=", "in"]
+TipoAtributo = Literal["numeric", "categorical", "boolean", "text"]
+
+
+class Condicion(_Contrato):
+    attribute_id: str
+    operator: Operador
+    value: Any
 
 
 class Atributo(_Contrato):
     id: str
     name: str
-    type: str = Field(description="numeric, categorical u otro tipo acordado con G1/G4.")
+    type: TipoAtributo
     question: str | None = None
-    range: list[float] | None = None
-    options: list[Any] = Field(default_factory=list)
-
-
-class Condicion(_Contrato):
-    attribute_id: str
-    operator: str = Field(examples=["==", ">="])
-    value: Any
+    range: list[float] | None = Field(default=None, min_length=2, max_length=2)
+    options: list[str] = Field(default_factory=list)
+    depends_on: Condicion | None = Field(
+        default=None, description="Pregunta condicional: solo se hace si se cumple esta condición.")
+    help_text: str | None = None
 
 
 class Conclusion(_Contrato):
@@ -55,17 +62,17 @@ class Conclusion(_Contrato):
 
 class Regla(_Contrato):
     id: str
-    description: str = ""
-    priority: int = 0
+    description: str
+    priority: int
     conditions: list[Condicion] = Field(min_length=1)
     conclusion: Conclusion
-    explanation_template: str | None = None
+    explanation_template: str
 
 
 class ConocimientoDominio(_Contrato):
     meta: Meta
-    attributes: list[Atributo]
-    rules: list[Regla]
+    attributes: list[Atributo] = Field(min_length=1)
+    rules: list[Regla] = Field(min_length=1)
 
 
 # --- memoria_trabajo.json ---
@@ -94,7 +101,7 @@ class MemoriaTrabajo(_Contrato):
 
 class DictamenSalida(_Contrato):
     session_id: str
-    final_outcome: Any
+    final_outcome: str
     certainty_score: float | None = None
     explanation_how: list[str]
     explanation_why: str
