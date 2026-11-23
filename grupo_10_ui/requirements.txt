@@ -1,0 +1,3 @@
+# G10 usa ServicioESB del Grupo 12, que necesita sus dependencias
+-r ../grupo_12_api/requirements.txt
+rich>=13
