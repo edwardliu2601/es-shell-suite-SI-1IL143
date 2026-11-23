@@ -51,7 +51,8 @@ def consultar(cliente, hechos, kb_id=KB_ACADEMICO):
 
 def test_salud_muestra_modulos_reales(cliente):
     modulos = cliente.get("/salud").json()["modulos"]
-    for grupo in ("G4 SchemaManager", "G5 ForwardEngine", "G8 XAIExplainer"):
+    for grupo in ("G4 SchemaManager", "G5 ForwardEngine", "G7 UncertaintyEngine",
+                  "G8 XAIExplainer"):
         assert modulos[grupo] == "real"
     assert modulos["G6 BackwardEngine"] == "simulado"
     assert cliente.get("/docs").status_code == 200
@@ -259,7 +260,8 @@ def test_conflicto_gana_la_regla_de_mayor_prioridad(cliente):
 # --- Respaldo cuando falta un modulo ---
 
 @pytest.mark.parametrize("grupo, nombre", [("G5", "G5 ForwardEngine"), ("G8", "G8 XAIExplainer"),
-                                           ("G4", "G4 SchemaManager")])
+                                           ("G4", "G4 SchemaManager"),
+                                           ("G7", "G7 UncertaintyEngine")])
 def test_la_api_sigue_respondiendo_sin_un_modulo(grupo, nombre):
     cliente = _cliente(ServicioESB(Integraciones(deshabilitar={grupo})))
     try:
@@ -278,3 +280,133 @@ def test_base_de_ejemplo_de_la_guia(cliente):
     dictamen = cliente.get(f"/consultas/{session_id}/dictamen").json()
     assert dictamen["final_outcome"] == "Elegible"
     assert dictamen["explanation_how"][:3] == cargar_ejemplo("dictamen_salida")["explanation_how"]
+
+
+# --- Factores de certeza (G7) ---
+
+HECHOS_EJEMPLO = {"materia": "Trabajo de Graduacion", "promedio": 2.25}
+
+
+def consulta_con_certeza(cliente, fc_reglas=None, fc_hechos=None):
+    r = cliente.post("/consultas", json={"kb_id": KB_EJEMPLO, "hechos": HECHOS_EJEMPLO,
+                                         "fc_reglas": fc_reglas or {},
+                                         "fc_hechos": fc_hechos or {}})
+    assert r.status_code == 201, r.json()
+    session_id = r.json()["session_id"]
+    memoria = cliente.post(f"/consultas/{session_id}/inferir").json()
+    return session_id, memoria
+
+
+def test_certeza_por_defecto_es_uno(cliente):
+    _, memoria = consulta_con_certeza(cliente)
+    assert memoria["derived_facts"]["dictamen"]["certainty_factor"] == 1.0
+
+
+def test_certeza_de_reglas_y_datos(cliente):
+    # Ejemplo del README de G7: FC = 0.8 (regla) * min(1.0, 0.9) (premisas) = 0.72.
+    session_id, memoria = consulta_con_certeza(cliente, {"rule_01": 0.8}, {"promedio": 0.9})
+    assert memoria["derived_facts"]["dictamen"]["certainty_factor"] == 0.72
+    dictamen = cliente.get(f"/consultas/{session_id}/dictamen").json()
+    assert dictamen["certainty_score"] == 0.72
+    assert dictamen["explanation_how"][0] == \
+        "Se determinó 'Elegible' debido a la regla rule_01 (FC = 0.72)."
+    kb = cliente.get(f"/conocimiento/{KB_EJEMPLO}").json()
+    assert VALIDADOR.validar_conjunto(kb, memoria, dictamen, "dictamen")["valido"]
+
+
+def test_certeza_bajo_el_umbral_de_mycin(cliente):
+    # Si las premisas no superan 0.2, la regla no aporta certeza.
+    session_id, _ = consulta_con_certeza(cliente, fc_hechos={"promedio": 0.1})
+    assert cliente.get(f"/consultas/{session_id}/dictamen").json()["certainty_score"] == 0.0
+
+
+def test_certeza_registrada_con_los_hechos(cliente):
+    session_id = nueva_sesion(cliente, {"materia": "Trabajo de Graduacion"}, KB_EJEMPLO)
+    cliente.post(f"/consultas/{session_id}/hechos",
+                 json={"hechos": {"promedio": 2.25}, "fc_hechos": {"promedio": 0.5}})
+    memoria = cliente.post(f"/consultas/{session_id}/inferir").json()
+    assert memoria["derived_facts"]["dictamen"]["certainty_factor"] == 0.5
+
+
+@pytest.mark.parametrize("cuerpo, fragmento", [
+    ({"fc_reglas": {"rule_99": 0.5}}, "rule_99"),
+    ({"fc_hechos": {"edad": 0.5}}, "edad"),
+])
+def test_certezas_que_no_corresponden_a_la_base(cliente, cuerpo, fragmento):
+    r = cliente.post("/consultas", json={"kb_id": KB_EJEMPLO, **cuerpo})
+    assert r.status_code == 422
+    assert fragmento in r.json()["errores"][0]
+
+
+def test_certeza_fuera_de_rango(cliente):
+    r = cliente.post("/consultas", json={"kb_id": KB_EJEMPLO, "fc_reglas": {"rule_01": 1.5}})
+    assert r.status_code == 422
+    session_id = nueva_sesion(cliente, {"materia": "Electiva"}, KB_EJEMPLO)
+    r = cliente.post(f"/consultas/{session_id}/hechos",
+                     json={"hechos": {"promedio": 2.0}, "fc_hechos": {"edad": 0.5}})
+    assert r.status_code == 422
+    assert cliente.get(f"/consultas/{session_id}/memoria").json()["facts"] == {"materia": "Electiva"}
+
+
+def test_sin_g7_se_ignora_la_certeza():
+    cliente = _cliente(ServicioESB(Integraciones(deshabilitar={"G7"})))
+    try:
+        session_id, memoria = consulta_con_certeza(cliente, {"rule_01": 0.8})
+        assert "certainty_factor" not in memoria["derived_facts"]["dictamen"]
+        assert cliente.get(f"/consultas/{session_id}/dictamen").json()["certainty_score"] == 1.0
+    finally:
+        app.dependency_overrides.clear()
+
+
+# --- Auditoria de la base (G3) ---
+
+class _ReporteFalso:
+    def to_dict(self):
+        return {"es_valida": True, "estado": "OK", "hallazgos": []}
+
+    def to_markdown(self):
+        return "# Reporte de auditoría\n"
+
+
+class _AuditorFalso:
+    """Imita la interfaz de KBAuditor de G3 (constructor y auditar())."""
+    recibido = None
+
+    def __init__(self, fuente, *, schema_manager=None, usar_schema_manager=True):
+        _AuditorFalso.recibido = fuente
+
+    def auditar(self):
+        return _ReporteFalso()
+
+
+def test_auditoria_sin_g3_responde_503():
+    cliente = _cliente(ServicioESB(Integraciones(deshabilitar={"G3"})))
+    try:
+        assert cliente.get("/salud").json()["modulos"]["G3 KBAuditor"] == "simulado"
+        r = cliente.get(f"/conocimiento/{KB_ACADEMICO}/auditoria")
+        assert r.status_code == 503 and "G3" in r.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_auditoria_delega_en_g3():
+    integraciones = Integraciones()
+    integraciones._g3 = _AuditorFalso
+    cliente = _cliente(ServicioESB(integraciones))
+    try:
+        r = cliente.get(f"/conocimiento/{KB_ACADEMICO}/auditoria")
+        assert r.status_code == 200 and r.json()["es_valida"] is True
+        assert _AuditorFalso.recibido["meta"]["author_group"] == "Grupo 4 - Schema Manager"
+        md = cliente.get(f"/conocimiento/{KB_ACADEMICO}/auditoria", params={"formato": "md"})
+        assert md.text.startswith("# Reporte de auditoría")
+        assert cliente.get("/conocimiento/kb_999/auditoria").status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_auditoria_con_g3_real(cliente):
+    if not hasattr(pytest.importorskip("grupo_03_auditor"), "KBAuditor"):
+        pytest.skip("KBAuditor (G3) todavía no está en esta rama")
+    r = cliente.get(f"/conocimiento/{KB_ACADEMICO}/auditoria")
+    assert r.status_code == 200
+    assert {"es_valida", "estado", "hallazgos", "tabla_decision"} <= set(r.json())

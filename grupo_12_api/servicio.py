@@ -6,7 +6,9 @@ logica de negocio de la capa HTTP. No razona por su cuenta: delega en los
 modulos de los demas grupos a traves de Integraciones (adaptadores.py).
 
 - cargar_conocimiento, iniciar_consulta, registrar_hechos: validan con G4.
-- inferir: ForwardEngine (G5). El motor hacia atras (G6) aun no existe; una
+- auditar_conocimiento: KBAuditor (G3), cuando esta en el repositorio.
+- inferir: ForwardEngine (G5) y luego UncertaintyEngine (G7) para el factor de
+  certeza de cada hecho derivado. El motor hacia atras (G6) aun no existe; una
   sesion con motor "atras" usa el motor hacia adelante y /salud lo indica.
 - siguiente_pregunta, explicar_how, explicar_why, obtener_traza: XAIExplainer (G8).
 - obtener_dictamen: arma dictamen_salida.json desde la memoria de trabajo.
@@ -26,7 +28,7 @@ from itertools import count
 from pathlib import Path
 from typing import Any
 
-from .adaptadores import RAIZ, ContratoInvalido, Integraciones, cumple
+from .adaptadores import RAIZ, ContratoInvalido, Integraciones, ModuloNoDisponible, cumple
 from .modelos import Motor
 
 DATOS_EJEMPLO = Path(__file__).parent / "datos_ejemplo"
@@ -36,7 +38,7 @@ RUTA_KB_ACADEMICO = RAIZ / "grupo_04_schema" / "ejemplos" / "conocimiento_domini
 ATRIBUTO_META = "dictamen"
 
 __all__ = ["ServicioESB", "NoEncontrado", "EstadoInvalido", "ContratoInvalido",
-           "KB_EJEMPLO", "KB_ACADEMICO", "cargar_ejemplo"]
+           "ModuloNoDisponible", "KB_EJEMPLO", "KB_ACADEMICO", "cargar_ejemplo"]
 
 
 class NoEncontrado(LookupError):
@@ -88,34 +90,56 @@ class ServicioESB:
             raise NoEncontrado(f"No existe la base de conocimiento '{kb_id}'.")
         return self._bases[kb_id]
 
+    def auditar_conocimiento(self, kb_id: str):
+        """Auditoria de G3: contradicciones, redundancias, condiciones inalcanzables y ciclos.
+
+        Devuelve el ReporteAuditoria de G3 (to_dict() / to_markdown()).
+        """
+        return self.integraciones.auditar(self.obtener_conocimiento(kb_id))
+
     def listar_preguntas(self, kb_id: str) -> list[dict]:
         """Atributos que se le pueden preguntar al usuario, en el orden de la base."""
         return [self._pregunta(a) for a in self.obtener_conocimiento(kb_id)["attributes"]]
 
     # --- Consultas ---
 
-    def iniciar_consulta(self, kb_id: str, motor: Motor, hechos: dict[str, Any]) -> dict:
-        """Crea una sesion con los hechos iniciales, si son validos para la base."""
+    def iniciar_consulta(self, kb_id: str, motor: Motor, hechos: dict[str, Any],
+                         fc_reglas: dict[str, float] | None = None,
+                         fc_hechos: dict[str, float] | None = None) -> dict:
+        """Crea una sesion con los hechos iniciales, si son validos para la base.
+
+        fc_reglas y fc_hechos son opcionales: el factor de certeza de cada regla
+        y de cada dato del usuario (G7). Lo que no se indica vale 1.0.
+        """
         kb = self.obtener_conocimiento(kb_id)
         session_id = f"sess_{datetime.now().year}_{next(self._session_ids):05d}"
         memoria = {"session_id": session_id, "facts": dict(hechos),
                    "derived_facts": {}, "execution_trace": []}
         self._exigir_memoria_valida(memoria, kb)
+        self.integraciones.validar_certezas(kb, fc_reglas, fc_hechos)
         self._sesiones[session_id] = {"kb_id": kb_id, "motor": motor, "memoria": memoria,
-                                      "ultima_pregunta": None}
+                                      "ultima_pregunta": None,
+                                      "fc_reglas": dict(fc_reglas or {}),
+                                      "fc_hechos": dict(fc_hechos or {})}
         return {"session_id": session_id, "kb_id": kb_id, "motor": motor}
 
-    def registrar_hechos(self, session_id: str, hechos: dict[str, Any]) -> dict:
-        """Agrega o reemplaza hechos del usuario.
+    def registrar_hechos(self, session_id: str, hechos: dict[str, Any],
+                         fc_hechos: dict[str, float] | None = None) -> dict:
+        """Agrega o reemplaza hechos del usuario (y, si se indica, su certeza).
 
         Como los hechos cambian, se descartan las conclusiones anteriores; se
         recalculan en la siguiente llamada a inferir.
         """
-        memoria = self.obtener_memoria(session_id)
+        sesion = self._sesion(session_id)
+        memoria = sesion["memoria"]
+        kb = self._kb_de(session_id)
         nueva = {**memoria, "facts": {**memoria["facts"], **hechos},
                  "derived_facts": {}, "execution_trace": []}
-        self._exigir_memoria_valida(nueva, self._kb_de(session_id))
+        nuevos_fc = {**sesion["fc_hechos"], **(fc_hechos or {})}
+        self._exigir_memoria_valida(nueva, kb)
+        self.integraciones.validar_certezas(kb, sesion["fc_reglas"], nuevos_fc)
         memoria.update(nueva)
+        sesion["fc_hechos"] = nuevos_fc
         return memoria
 
     def siguiente_pregunta(self, session_id: str) -> dict:
@@ -160,10 +184,14 @@ class ServicioESB:
         Si ninguna regla se activa, la memoria queda sin hechos derivados; eso
         es un resultado valido, no un error.
         """
-        memoria = self.obtener_memoria(session_id)
+        sesion = self._sesion(session_id)
+        memoria = sesion["memoria"]
         if not memoria["facts"]:
             raise EstadoInvalido("La sesión no tiene hechos ingresados; registre datos antes de inferir.")
-        nueva, motivo = self.integraciones.inferir_adelante(self._kb_de(session_id), memoria)
+        kb = self._kb_de(session_id)
+        nueva, motivo = self.integraciones.inferir_adelante(kb, memoria)
+        nueva = self.integraciones.evaluar_certeza(kb, nueva, sesion["fc_reglas"],
+                                                   sesion["fc_hechos"])
         memoria.update(nueva)
         return memoria, motivo
 
