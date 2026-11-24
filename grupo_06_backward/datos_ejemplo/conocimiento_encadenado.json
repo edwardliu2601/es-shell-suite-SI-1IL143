@@ -1,0 +1,108 @@
+{
+  "meta": {
+    "project_title": "Elegibilidad de Trabajo de Graduacion (encadenamiento)",
+    "version": "1.0",
+    "author_group": "Grupo 6 - Backward Engine"
+  },
+  "attributes": [
+    {
+      "id": "materia",
+      "name": "Tipo de Asignatura Solicitada",
+      "type": "categorical",
+      "question": "Seleccione el tipo de asignatura que desea matricular:",
+      "options": ["Obligatoria", "Electiva", "Trabajo de Graduacion"]
+    },
+    {
+      "id": "promedio",
+      "name": "Promedio Ponderado Acumulado",
+      "type": "numeric",
+      "question": "¿Cuál es el promedio ponderado del estudiante?",
+      "range": [0.0, 3.0]
+    },
+    {
+      "id": "creditos",
+      "name": "Créditos aprobados",
+      "type": "numeric",
+      "question": "¿Cuántos créditos ha aprobado el estudiante?",
+      "range": [0, 200]
+    },
+    {
+      "id": "requisitos",
+      "name": "Requisitos de créditos",
+      "type": "categorical",
+      "options": ["Cumple", "No cumple"]
+    },
+    {
+      "id": "dictamen",
+      "name": "Dictamen de elegibilidad",
+      "type": "categorical",
+      "options": ["Elegible", "No elegible"]
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule_01",
+      "description": "Trabajo de Graduación con promedio y créditos suficientes",
+      "priority": 10,
+      "conditions": [
+        {"attribute_id": "materia", "operator": "==", "value": "Trabajo de Graduacion"},
+        {"attribute_id": "promedio", "operator": ">=", "value": 2.0},
+        {"attribute_id": "requisitos", "operator": "==", "value": "Cumple"}
+      ],
+      "conclusion": {"attribute_id": "dictamen", "value": "Elegible"},
+      "explanation_template": "El promedio y los créditos cumplen el mínimo requerido."
+    },
+    {
+      "id": "rule_02",
+      "description": "Las demás asignaturas no exigen requisitos adicionales",
+      "priority": 8,
+      "conditions": [
+        {"attribute_id": "materia", "operator": "in", "value": ["Obligatoria", "Electiva"]}
+      ],
+      "conclusion": {"attribute_id": "dictamen", "value": "Elegible"},
+      "explanation_template": "La asignatura no exige requisitos adicionales."
+    },
+    {
+      "id": "rule_03",
+      "description": "Promedio insuficiente para Trabajo de Graduación",
+      "priority": 5,
+      "conditions": [
+        {"attribute_id": "materia", "operator": "==", "value": "Trabajo de Graduacion"},
+        {"attribute_id": "promedio", "operator": "<", "value": 2.0}
+      ],
+      "conclusion": {"attribute_id": "dictamen", "value": "No elegible"},
+      "explanation_template": "El promedio está por debajo del mínimo requerido."
+    },
+    {
+      "id": "rule_04",
+      "description": "Créditos suficientes",
+      "priority": 10,
+      "conditions": [
+        {"attribute_id": "creditos", "operator": ">=", "value": 140}
+      ],
+      "conclusion": {"attribute_id": "requisitos", "value": "Cumple"},
+      "explanation_template": "El estudiante tiene al menos 140 créditos aprobados."
+    },
+    {
+      "id": "rule_05",
+      "description": "Créditos insuficientes",
+      "priority": 1,
+      "conditions": [
+        {"attribute_id": "creditos", "operator": "<", "value": 140}
+      ],
+      "conclusion": {"attribute_id": "requisitos", "value": "No cumple"},
+      "explanation_template": "El estudiante no llega a 140 créditos aprobados."
+    },
+    {
+      "id": "rule_06",
+      "description": "Créditos insuficientes impiden la elegibilidad",
+      "priority": 4,
+      "conditions": [
+        {"attribute_id": "materia", "operator": "==", "value": "Trabajo de Graduacion"},
+        {"attribute_id": "requisitos", "operator": "==", "value": "No cumple"}
+      ],
+      "conclusion": {"attribute_id": "dictamen", "value": "No elegible"},
+      "explanation_template": "No se alcanzan los créditos mínimos."
+    }
+  ]
+}
