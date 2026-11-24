@@ -1,0 +1,18 @@
+{
+  "session_id": "sess_ejemplo_001",
+  "facts": {
+    "materia": "Trabajo de Graduacion",
+    "promedio": 2.25
+  },
+  "derived_facts": {
+    "dictamen": {
+      "value": "Elegible",
+      "derived_by_rule": "rule_01",
+      "certainty_factor": 1.0,
+      "timestamp": "2026-10-23T10:15:00Z"
+    }
+  },
+  "execution_trace": [
+    {"step": 1, "rule_fired": "rule_01", "added_fact": "dictamen"}
+  ]
+}

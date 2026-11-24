@@ -6,14 +6,20 @@ logica de negocio de la capa HTTP. No razona por su cuenta: delega en los
 modulos de los demas grupos a traves de Integraciones (adaptadores.py).
 
 - cargar_conocimiento, iniciar_consulta, registrar_hechos: validan con G4.
-- inferir: ForwardEngine (G5). El motor hacia atras (G6) aun no existe; una
-  sesion con motor "atras" usa el motor hacia adelante y /salud lo indica.
-- siguiente_pregunta, explicar_how, explicar_why, obtener_traza: XAIExplainer (G8).
+- auditar_conocimiento: KBAuditor (G3), cuando esta en el repositorio.
+- inferir: ForwardEngine (G5) si la sesion usa motor "adelante" o
+  BackwardEngine (G6) si usa "atras"; luego UncertaintyEngine (G7) calcula el
+  factor de certeza de cada hecho derivado.
+- siguiente_pregunta: BackwardEngine (G6) en sesiones "atras"; en sesiones
+  "adelante", las reglas de la base. El WHY lo da XAIExplainer (G8).
+- explicar_how, explicar_why, obtener_traza: XAIExplainer (G8).
 - obtener_dictamen: arma dictamen_salida.json desde la memoria de trabajo.
 - generar_reporte: ReportGenerator (G9) si esta implementado, o uno propio.
+- guardar_sesion, listar_sesiones_guardadas, restaurar_sesion: ESBConverter
+  (G11), en la carpeta ESB_CARPETA_SESIONES (por defecto
+  grupo_12_api/sesiones_guardadas/).
 
-Las bases y las sesiones se guardan en memoria mientras G11 no publique su
-modulo de persistencia.
+Las sesiones abiertas viven en memoria; G11 las guarda en disco cuando se pide.
 """
 
 from __future__ import annotations
@@ -21,12 +27,13 @@ from __future__ import annotations
 import copy
 import html
 import json
+import os
 from datetime import datetime
 from itertools import count
 from pathlib import Path
 from typing import Any
 
-from .adaptadores import RAIZ, ContratoInvalido, Integraciones, cumple
+from .adaptadores import RAIZ, ContratoInvalido, Integraciones, ModuloNoDisponible, cumple
 from .modelos import Motor
 
 DATOS_EJEMPLO = Path(__file__).parent / "datos_ejemplo"
@@ -34,9 +41,11 @@ KB_EJEMPLO = "kb_ejemplo"
 KB_ACADEMICO = "kb_academico"
 RUTA_KB_ACADEMICO = RAIZ / "grupo_04_schema" / "ejemplos" / "conocimiento_dominio.json"
 ATRIBUTO_META = "dictamen"
+CARPETA_SESIONES = Path(os.environ.get("ESB_CARPETA_SESIONES",
+                                       Path(__file__).parent / "sesiones_guardadas"))
 
 __all__ = ["ServicioESB", "NoEncontrado", "EstadoInvalido", "ContratoInvalido",
-           "KB_EJEMPLO", "KB_ACADEMICO", "cargar_ejemplo"]
+           "ModuloNoDisponible", "KB_EJEMPLO", "KB_ACADEMICO", "cargar_ejemplo"]
 
 
 class NoEncontrado(LookupError):
@@ -57,8 +66,10 @@ class ServicioESB:
     """Fachada de la suite que usa la API REST."""
 
     def __init__(self, integraciones: Integraciones | None = None,
-                 precargar_ejemplos: bool = True):
+                 precargar_ejemplos: bool = True,
+                 carpeta_sesiones: Path | str | None = None):
         self.integraciones = integraciones or Integraciones()
+        self.carpeta_sesiones = Path(carpeta_sesiones or CARPETA_SESIONES)
         self._bases: dict[str, dict] = {}
         self._sesiones: dict[str, dict] = {}
         self._kb_ids = count(1)
@@ -88,46 +99,69 @@ class ServicioESB:
             raise NoEncontrado(f"No existe la base de conocimiento '{kb_id}'.")
         return self._bases[kb_id]
 
+    def auditar_conocimiento(self, kb_id: str):
+        """Auditoria de G3: contradicciones, redundancias, condiciones inalcanzables y ciclos.
+
+        Devuelve el ReporteAuditoria de G3 (to_dict() / to_markdown()).
+        """
+        return self.integraciones.auditar(self.obtener_conocimiento(kb_id))
+
     def listar_preguntas(self, kb_id: str) -> list[dict]:
         """Atributos que se le pueden preguntar al usuario, en el orden de la base."""
         return [self._pregunta(a) for a in self.obtener_conocimiento(kb_id)["attributes"]]
 
     # --- Consultas ---
 
-    def iniciar_consulta(self, kb_id: str, motor: Motor, hechos: dict[str, Any]) -> dict:
-        """Crea una sesion con los hechos iniciales, si son validos para la base."""
+    def iniciar_consulta(self, kb_id: str, motor: Motor, hechos: dict[str, Any],
+                         fc_reglas: dict[str, float] | None = None,
+                         fc_hechos: dict[str, float] | None = None) -> dict:
+        """Crea una sesion con los hechos iniciales, si son validos para la base.
+
+        fc_reglas y fc_hechos son opcionales: el factor de certeza de cada regla
+        y de cada dato del usuario (G7). Lo que no se indica vale 1.0.
+        """
         kb = self.obtener_conocimiento(kb_id)
-        session_id = f"sess_{datetime.now().year}_{next(self._session_ids):05d}"
+        session_id = self._nuevo_session_id()
         memoria = {"session_id": session_id, "facts": dict(hechos),
                    "derived_facts": {}, "execution_trace": []}
         self._exigir_memoria_valida(memoria, kb)
-        self._sesiones[session_id] = {"kb_id": kb_id, "motor": motor, "memoria": memoria,
-                                      "ultima_pregunta": None}
+        self.integraciones.validar_certezas(kb, fc_reglas, fc_hechos)
+        self._abrir_sesion(session_id, kb_id, motor, memoria, fc_reglas, fc_hechos)
         return {"session_id": session_id, "kb_id": kb_id, "motor": motor}
 
-    def registrar_hechos(self, session_id: str, hechos: dict[str, Any]) -> dict:
-        """Agrega o reemplaza hechos del usuario.
+    def registrar_hechos(self, session_id: str, hechos: dict[str, Any],
+                         fc_hechos: dict[str, float] | None = None) -> dict:
+        """Agrega o reemplaza hechos del usuario (y, si se indica, su certeza).
 
         Como los hechos cambian, se descartan las conclusiones anteriores; se
         recalculan en la siguiente llamada a inferir.
         """
-        memoria = self.obtener_memoria(session_id)
+        sesion = self._sesion(session_id)
+        memoria = sesion["memoria"]
+        kb = self._kb_de(session_id)
         nueva = {**memoria, "facts": {**memoria["facts"], **hechos},
                  "derived_facts": {}, "execution_trace": []}
-        self._exigir_memoria_valida(nueva, self._kb_de(session_id))
+        nuevos_fc = {**sesion["fc_hechos"], **(fc_hechos or {})}
+        self._exigir_memoria_valida(nueva, kb)
+        self.integraciones.validar_certezas(kb, sesion["fc_reglas"], nuevos_fc)
         memoria.update(nueva)
+        sesion["fc_hechos"] = nuevos_fc
         return memoria
 
     def siguiente_pregunta(self, session_id: str) -> dict:
         """Proximo dato que conviene pedir, con su explicacion WHY.
 
-        Recorre las reglas de mayor a menor prioridad, descarta las que ya no
-        pueden cumplirse con los hechos conocidos y devuelve el primer atributo
-        que falta y que el usuario puede responder (no lo concluye ninguna
-        regla y, si tiene depends_on, su condicion se cumple).
+        En una sesion "atras" lo decide BackwardEngine (G6) a partir de la meta.
+        En una sesion "adelante" se recorren las reglas de mayor a menor
+        prioridad, se descartan las que ya no pueden cumplirse con los hechos
+        conocidos y se devuelve el primer atributo que falta y que el usuario
+        puede responder (no lo concluye ninguna regla y, si tiene depends_on,
+        su condicion se cumple).
         """
         memoria = self.obtener_memoria(session_id)
         kb = self._kb_de(session_id)
+        if self._usa_motor_atras(session_id):
+            return self._siguiente_pregunta_atras(session_id, kb, memoria)
         conocidos = self._conocidos(memoria)
         atributos = {a["id"]: a for a in kb["attributes"]}
         concluidos = {r["conclusion"]["attribute_id"] for r in kb["rules"]}
@@ -160,15 +194,46 @@ class ServicioESB:
         Si ninguna regla se activa, la memoria queda sin hechos derivados; eso
         es un resultado valido, no un error.
         """
-        memoria = self.obtener_memoria(session_id)
+        sesion = self._sesion(session_id)
+        memoria = sesion["memoria"]
         if not memoria["facts"]:
             raise EstadoInvalido("La sesión no tiene hechos ingresados; registre datos antes de inferir.")
-        nueva, motivo = self.integraciones.inferir_adelante(self._kb_de(session_id), memoria)
+        kb = self._kb_de(session_id)
+        if self._usa_motor_atras(session_id):
+            nueva, motivo = self.integraciones.inferir_atras(kb, self._meta_de(kb), memoria)
+        else:
+            nueva, motivo = self.integraciones.inferir_adelante(kb, memoria)
+        nueva = self.integraciones.evaluar_certeza(kb, nueva, sesion["fc_reglas"],
+                                                   sesion["fc_hechos"])
         memoria.update(nueva)
         return memoria, motivo
 
     def obtener_memoria(self, session_id: str) -> dict:
         return self._sesion(session_id)["memoria"]
+
+    # --- Persistencia (G11) ---
+
+    def guardar_sesion(self, session_id: str) -> dict:
+        """Guarda la memoria de la sesion en disco con ESBConverter (G11)."""
+        memoria = self.obtener_memoria(session_id)
+        ruta = self.integraciones.guardar_sesion(memoria, self._kb_de(session_id),
+                                                 self.carpeta_sesiones)
+        return {"session_id": session_id, "ruta": str(ruta)}
+
+    def listar_sesiones_guardadas(self) -> list[str]:
+        return self.integraciones.listar_sesiones(self.carpeta_sesiones)
+
+    def restaurar_sesion(self, session_id: str, kb_id: str, motor: Motor = Motor.adelante) -> dict:
+        """Abre de nuevo una sesion guardada, validada contra la base kb_id."""
+        kb = self.obtener_conocimiento(kb_id)
+        if session_id in self._sesiones:
+            raise EstadoInvalido(f"La sesión '{session_id}' ya está abierta.")
+        try:
+            memoria = self.integraciones.cargar_sesion(self.carpeta_sesiones, session_id, kb)
+        except FileNotFoundError as exc:
+            raise NoEncontrado(f"No hay una sesión guardada con el id '{session_id}'.") from exc
+        self._abrir_sesion(session_id, kb_id, motor, memoria)
+        return {"session_id": session_id, "kb_id": kb_id, "motor": motor}
 
     def obtener_dictamen(self, session_id: str) -> dict:
         """Construye dictamen_salida.json a partir de la memoria de la sesion."""
@@ -237,6 +302,42 @@ class ServicioESB:
                 f"## ¿Por qué?\n\n{d['explanation_why']}\n")
 
     # --- internos ---
+
+    def _nuevo_session_id(self) -> str:
+        while True:
+            session_id = f"sess_{datetime.now().year}_{next(self._session_ids):05d}"
+            if session_id not in self._sesiones:
+                return session_id
+
+    def _abrir_sesion(self, session_id: str, kb_id: str, motor: Motor, memoria: dict,
+                      fc_reglas: dict | None = None, fc_hechos: dict | None = None) -> None:
+        self._sesiones[session_id] = {"kb_id": kb_id, "motor": motor, "memoria": memoria,
+                                      "ultima_pregunta": None,
+                                      "fc_reglas": dict(fc_reglas or {}),
+                                      "fc_hechos": dict(fc_hechos or {})}
+
+    def _usa_motor_atras(self, session_id: str) -> bool:
+        return (self._sesion(session_id)["motor"] == Motor.atras
+                and self.integraciones.hay_motor_atras)
+
+    @staticmethod
+    def _meta_de(kb: dict) -> str:
+        """Meta del motor hacia atras: 'dictamen' o la conclusion de mayor prioridad."""
+        conclusiones = [r["conclusion"]["attribute_id"] for r in kb["rules"]]
+        if ATRIBUTO_META in conclusiones:
+            return ATRIBUTO_META
+        return max(kb["rules"], key=lambda r: r.get("priority", 0))["conclusion"]["attribute_id"]
+
+    def _siguiente_pregunta_atras(self, session_id: str, kb: dict, memoria: dict) -> dict:
+        pregunta = self.integraciones.siguiente_atras(kb, self._meta_de(kb), memoria)
+        if pregunta is None:
+            return {"session_id": session_id, "completa": True, "pregunta": None,
+                    "explanation_why": None}
+        attr, rule_id = pregunta.pop("attribute_id"), pregunta.pop("rule_id")
+        why = self._traducir(self.integraciones.explicador(kb).explain_why, attr, rule_id)
+        self._sesion(session_id)["ultima_pregunta"] = (attr, rule_id)
+        return {"session_id": session_id, "completa": False,
+                "pregunta": {"attribute_id": attr, **pregunta}, "explanation_why": why}
 
     def _sesion(self, session_id: str) -> dict:
         if session_id not in self._sesiones:

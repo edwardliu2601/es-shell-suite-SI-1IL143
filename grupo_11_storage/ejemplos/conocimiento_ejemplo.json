@@ -1,0 +1,52 @@
+{
+  "meta": {
+    "project_title": "Elegibilidad para un tramite (ejemplo ficticio)",
+    "version": "1.0",
+    "author_group": "Grupo 11 - Storage"
+  },
+  "attributes": [
+    {
+      "id": "materia",
+      "name": "Materia",
+      "type": "categorical",
+      "question": "¿Que materia se consulta?",
+      "options": ["Trabajo de Graduacion", "Practica Profesional"]
+    },
+    {
+      "id": "promedio",
+      "name": "Promedio",
+      "type": "numeric",
+      "question": "¿Cual es el promedio del estudiante (0 a 3)?",
+      "range": [0, 3]
+    },
+    {
+      "id": "dictamen",
+      "name": "Dictamen",
+      "type": "categorical",
+      "options": ["Elegible", "No elegible"]
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule_01",
+      "description": "Elegibilidad para un tramite",
+      "priority": 10,
+      "conditions": [
+        {"attribute_id": "materia", "operator": "==", "value": "Trabajo de Graduacion"},
+        {"attribute_id": "promedio", "operator": ">=", "value": 2.0}
+      ],
+      "conclusion": {"attribute_id": "dictamen", "value": "Elegible"},
+      "explanation_template": "El promedio cumple el minimo requerido."
+    },
+    {
+      "id": "rule_02",
+      "description": "No elegible por promedio bajo",
+      "priority": 5,
+      "conditions": [
+        {"attribute_id": "promedio", "operator": "<", "value": 2.0}
+      ],
+      "conclusion": {"attribute_id": "dictamen", "value": "No elegible"},
+      "explanation_template": "El promedio no alcanza el minimo requerido."
+    }
+  ]
+}

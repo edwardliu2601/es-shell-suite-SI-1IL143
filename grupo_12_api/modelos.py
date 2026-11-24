@@ -16,7 +16,7 @@ de "in", ids repetidos, rangos) las hace SchemaManager (G4) en servicio.py.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -137,10 +137,19 @@ class Pregunta(BaseModel):
     range: list[float] | None = None
 
 
+FactorCerteza = Annotated[float, Field(ge=-1.0, le=1.0)]
+
+
 class NuevaConsulta(BaseModel):
     kb_id: str
     motor: Motor = Motor.adelante
     hechos: dict[str, Any] = Field(default_factory=dict)
+    fc_reglas: dict[str, FactorCerteza] = Field(
+        default_factory=dict,
+        description="Factor de certeza de cada regla, {rule_id: FC}. Las que faltan valen 1.0 (G7).")
+    fc_hechos: dict[str, FactorCerteza] = Field(
+        default_factory=dict,
+        description="Certeza del usuario en cada dato, {attribute_id: FC}. Los que faltan valen 1.0.")
 
 
 class ConsultaCreada(BaseModel):
@@ -149,8 +158,20 @@ class ConsultaCreada(BaseModel):
     motor: Motor
 
 
+class RestaurarSesion(BaseModel):
+    kb_id: str = Field(description="Base con la que se validan los hechos guardados.")
+    motor: Motor = Motor.adelante
+
+
+class SesionGuardada(BaseModel):
+    session_id: str
+    ruta: str
+
+
 class HechosEntrada(BaseModel):
     hechos: dict[str, Any] = Field(min_length=1)
+    fc_hechos: dict[str, FactorCerteza] = Field(
+        default_factory=dict, description="Certeza del usuario en estos datos (opcional).")
 
 
 class SiguientePregunta(BaseModel):

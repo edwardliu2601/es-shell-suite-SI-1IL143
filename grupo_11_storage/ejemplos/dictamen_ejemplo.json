@@ -1,0 +1,9 @@
+{
+  "session_id": "sess_ejemplo_001",
+  "final_outcome": "Elegible",
+  "certainty_score": 1.0,
+  "explanation_how": [
+    "rule_01: el promedio 2.25 es mayor o igual que 2.0 para Trabajo de Graduacion."
+  ],
+  "explanation_why": "Se pregunto el promedio porque la regla rule_01 lo necesita."
+}

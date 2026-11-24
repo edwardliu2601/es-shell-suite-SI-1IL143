@@ -106,3 +106,23 @@ def test_ciclo_en_derivacion():
                                          "b": {"value": 1, "derived_by_rule": "r_b"}}}
     with pytest.raises(ValueError, match="Ciclo"):
         XAIExplainer(kb).explain_how(wm, "a")
+
+
+def test_how_cita_otras_reglas_que_tambien_respaldan_la_conclusion():
+    kb = copy.deepcopy(KB)
+    kb["rules"].append({
+        "id": "rule_02", "description": "Respaldo", "priority": 5,
+        "conditions": [{"attribute_id": "promedio", "operator": ">=", "value": 1.5}],
+        "conclusion": {"attribute_id": "dictamen", "value": "Elegible"},
+    })
+    kb["rules"].append({  # misma conclusion pero no se cumple: no debe citarse
+        "id": "rule_03", "description": "No aplica", "priority": 1,
+        "conditions": [{"attribute_id": "promedio", "operator": ">", "value": 2.9}],
+        "conclusion": {"attribute_id": "dictamen", "value": "Elegible"},
+    })
+    how = XAIExplainer(kb).explain_how(WM, "dictamen")
+    assert how[-1] == "También respaldan esta conclusión: rule_02."
+
+
+def test_how_con_una_sola_regla_no_agrega_linea_de_respaldo():
+    assert not any("respaldan" in l for l in XAIExplainer(KB).explain_how(WM, "dictamen"))
