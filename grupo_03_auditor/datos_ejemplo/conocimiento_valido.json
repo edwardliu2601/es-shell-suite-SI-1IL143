@@ -1,0 +1,221 @@
+{
+  "meta": {
+    "project_title": "Evaluación de elegibilidad para beca académica (ejemplo válido)",
+    "version": "1.0",
+    "author_group": "Grupo 3 - KBAuditor"
+  },
+  "attributes": [
+    {
+      "id": "modalidad",
+      "name": "Modalidad de estudio",
+      "type": "categorical",
+      "question": "¿Cuál es la modalidad de estudio del estudiante?",
+      "options": [
+        "Presencial",
+        "Semipresencial",
+        "Virtual"
+      ]
+    },
+    {
+      "id": "indice_academico",
+      "name": "Índice académico acumulado",
+      "type": "numeric",
+      "question": "¿Cuál es el índice académico acumulado (escala 0.0 a 3.0)?",
+      "range": [
+        0.0,
+        3.0
+      ],
+      "help_text": "Ingrese un valor decimal entre 0.0 y 3.0."
+    },
+    {
+      "id": "sin_reprobadas",
+      "name": "Sin asignaturas reprobadas",
+      "type": "boolean",
+      "question": "¿El estudiante ha aprobado todas sus asignaturas sin reprobaciones?"
+    },
+    {
+      "id": "programa_especial",
+      "name": "Nombre del programa especial",
+      "type": "text",
+      "question": "¿Cuál es el nombre del programa especial en modalidad virtual?",
+      "depends_on": {
+        "attribute_id": "modalidad",
+        "operator": "==",
+        "value": "Virtual"
+      }
+    },
+    {
+      "id": "preseleccion",
+      "name": "Estado de preselección",
+      "type": "categorical",
+      "options": [
+        "Apto",
+        "No apto"
+      ]
+    },
+    {
+      "id": "dictamen",
+      "name": "Dictamen final de beca",
+      "type": "categorical",
+      "options": [
+        "Beca completa",
+        "Beca parcial",
+        "No elegible"
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "regla_preseleccion_apta",
+      "description": "Preselección favorable para modalidad presencial o semipresencial sin reprobadas",
+      "priority": 30,
+      "conditions": [
+        {
+          "attribute_id": "modalidad",
+          "operator": "in",
+          "value": [
+            "Presencial",
+            "Semipresencial"
+          ]
+        },
+        {
+          "attribute_id": "sin_reprobadas",
+          "operator": "==",
+          "value": true
+        }
+      ],
+      "conclusion": {
+        "attribute_id": "preseleccion",
+        "value": "Apto"
+      },
+      "explanation_template": "El estudiante cumple la modalidad permitida y no registra asignaturas reprobadas."
+    },
+    {
+      "id": "regla_preseleccion_no_apta_reprobadas",
+      "description": "Preselección desfavorable por asignaturas reprobadas",
+      "priority": 30,
+      "conditions": [
+        {
+          "attribute_id": "sin_reprobadas",
+          "operator": "==",
+          "value": false
+        }
+      ],
+      "conclusion": {
+        "attribute_id": "preseleccion",
+        "value": "No apto"
+      },
+      "explanation_template": "El estudiante registra asignaturas reprobadas."
+    },
+    {
+      "id": "regla_preseleccion_no_apta_virtual",
+      "description": "Preselección desfavorable para modalidad virtual sin reprobadas",
+      "priority": 30,
+      "conditions": [
+        {
+          "attribute_id": "modalidad",
+          "operator": "==",
+          "value": "Virtual"
+        },
+        {
+          "attribute_id": "sin_reprobadas",
+          "operator": "==",
+          "value": true
+        }
+      ],
+      "conclusion": {
+        "attribute_id": "preseleccion",
+        "value": "No apto"
+      },
+      "explanation_template": "La convocatoria de beca no aplica a la modalidad virtual."
+    },
+    {
+      "id": "regla_beca_completa",
+      "description": "Otorga beca completa por índice sobresaliente",
+      "priority": 20,
+      "conditions": [
+        {
+          "attribute_id": "preseleccion",
+          "operator": "==",
+          "value": "Apto"
+        },
+        {
+          "attribute_id": "indice_academico",
+          "operator": ">=",
+          "value": 2.5
+        }
+      ],
+      "conclusion": {
+        "attribute_id": "dictamen",
+        "value": "Beca completa"
+      },
+      "explanation_template": "El estudiante preseleccionado posee un índice igual o superior a 2.5."
+    },
+    {
+      "id": "regla_beca_parcial",
+      "description": "Otorga beca parcial por índice bueno",
+      "priority": 20,
+      "conditions": [
+        {
+          "attribute_id": "preseleccion",
+          "operator": "==",
+          "value": "Apto"
+        },
+        {
+          "attribute_id": "indice_academico",
+          "operator": ">=",
+          "value": 2.0
+        },
+        {
+          "attribute_id": "indice_academico",
+          "operator": "<",
+          "value": 2.5
+        }
+      ],
+      "conclusion": {
+        "attribute_id": "dictamen",
+        "value": "Beca parcial"
+      },
+      "explanation_template": "El estudiante preseleccionado posee un índice entre 2.0 y menos de 2.5."
+    },
+    {
+      "id": "regla_no_elegible_indice",
+      "description": "No elegible por índice insuficiente",
+      "priority": 20,
+      "conditions": [
+        {
+          "attribute_id": "preseleccion",
+          "operator": "==",
+          "value": "Apto"
+        },
+        {
+          "attribute_id": "indice_academico",
+          "operator": "<",
+          "value": 2.0
+        }
+      ],
+      "conclusion": {
+        "attribute_id": "dictamen",
+        "value": "No elegible"
+      },
+      "explanation_template": "El índice académico es inferior al mínimo requerido (2.0)."
+    },
+    {
+      "id": "regla_no_elegible_preseleccion",
+      "description": "No elegible por preselección desfavorable",
+      "priority": 20,
+      "conditions": [
+        {
+          "attribute_id": "preseleccion",
+          "operator": "==",
+          "value": "No apto"
+        }
+      ],
+      "conclusion": {
+        "attribute_id": "dictamen",
+        "value": "No elegible"
+      },
+      "explanation_template": "El estudiante no superó los criterios de preselección."
+    }
+  ]
+}
