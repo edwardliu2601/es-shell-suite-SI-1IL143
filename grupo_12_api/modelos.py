@@ -158,6 +158,16 @@ class ConsultaCreada(BaseModel):
     motor: Motor
 
 
+class RestaurarSesion(BaseModel):
+    kb_id: str = Field(description="Base con la que se validan los hechos guardados.")
+    motor: Motor = Motor.adelante
+
+
+class SesionGuardada(BaseModel):
+    session_id: str
+    ruta: str
+
+
 class HechosEntrada(BaseModel):
     hechos: dict[str, Any] = Field(min_length=1)
     fc_hechos: dict[str, FactorCerteza] = Field(
