@@ -51,10 +51,10 @@ def consultar(cliente, hechos, kb_id=KB_ACADEMICO):
 
 def test_salud_muestra_modulos_reales(cliente):
     modulos = cliente.get("/salud").json()["modulos"]
-    for grupo in ("G4 SchemaManager", "G5 ForwardEngine", "G7 UncertaintyEngine",
-                  "G8 XAIExplainer"):
+    for grupo in ("G3 KBAuditor", "G4 SchemaManager", "G5 ForwardEngine", "G6 BackwardEngine",
+                  "G7 UncertaintyEngine", "G8 XAIExplainer", "G9 ReportGenerator"):
         assert modulos[grupo] == "real"
-    assert modulos["G6 BackwardEngine"] == "simulado"
+    assert modulos["G11 ESBConverter"] in {"real", "simulado"}
     assert cliente.get("/docs").status_code == 200
 
 
@@ -261,7 +261,8 @@ def test_conflicto_gana_la_regla_de_mayor_prioridad(cliente):
 
 @pytest.mark.parametrize("grupo, nombre", [("G5", "G5 ForwardEngine"), ("G8", "G8 XAIExplainer"),
                                            ("G4", "G4 SchemaManager"),
-                                           ("G7", "G7 UncertaintyEngine")])
+                                           ("G7", "G7 UncertaintyEngine"),
+                                           ("G6", "G6 BackwardEngine")])
 def test_la_api_sigue_respondiendo_sin_un_modulo(grupo, nombre):
     cliente = _cliente(ServicioESB(Integraciones(deshabilitar={grupo})))
     try:
@@ -410,3 +411,165 @@ def test_auditoria_con_g3_real(cliente):
     r = cliente.get(f"/conocimiento/{KB_ACADEMICO}/auditoria")
     assert r.status_code == 200
     assert {"es_valida", "estado", "hallazgos", "tabla_decision"} <= set(r.json())
+
+
+# --- Motor hacia atras (G6) ---
+
+def sesion_atras(cliente, hechos=None):
+    r = cliente.post("/consultas", json={"kb_id": KB_ACADEMICO, "motor": "atras",
+                                         "hechos": hechos or {}})
+    assert r.status_code == 201, r.json()
+    return r.json()["session_id"]
+
+
+def test_motor_atras_pregunta_solo_lo_necesario(cliente):
+    session_id = sesion_atras(cliente)
+    url = f"/consultas/{session_id}/siguiente-pregunta"
+    preguntados = []
+    respuestas = {"tipo_consulta": "Repeticion", "nota_obtenida": "D"}
+    while not (pendiente := cliente.get(url).json())["completa"]:
+        attr = pendiente["pregunta"]["attribute_id"]
+        assert pendiente["explanation_why"].startswith(f"Se solicitó '{attr}'")
+        preguntados.append(attr)
+        cliente.post(f"/consultas/{session_id}/hechos", json={"hechos": {attr: respuestas[attr]}})
+    assert preguntados == ["tipo_consulta", "nota_obtenida"]  # nunca pide puntaje_final
+
+    memoria = cliente.post(f"/consultas/{session_id}/inferir").json()
+    assert memoria["halted_reason"] == "derivado"
+    assert memoria["derived_facts"]["dictamen"]["derived_by_rule"] == "reg_repeticion_d"
+    dictamen = cliente.get(f"/consultas/{session_id}/dictamen").json()
+    assert "reg_repeticion_d" in dictamen["explanation_why"]
+    kb = cliente.get(f"/conocimiento/{KB_ACADEMICO}").json()
+    assert VALIDADOR.validar_conjunto(kb, memoria, dictamen, "dictamen")["valido"]
+
+
+def test_motor_atras_con_dato_faltante(cliente):
+    session_id = sesion_atras(cliente, {"tipo_consulta": "Calificacion"})
+    pendiente = cliente.get(f"/consultas/{session_id}/siguiente-pregunta").json()
+    assert pendiente["pregunta"]["attribute_id"] == "puntaje_final"
+    assert pendiente["pregunta"]["range"] == [0, 100]
+    memoria = cliente.post(f"/consultas/{session_id}/inferir").json()
+    assert memoria["halted_reason"] == "falta_dato" and memoria["derived_facts"] == {}
+    assert cliente.get(f"/consultas/{session_id}/dictamen").status_code == 409
+
+
+def test_motor_atras_y_adelante_coinciden(cliente):
+    hechos = {"tipo_consulta": "Calificacion", "puntaje_final": 72}
+    resultados = []
+    for motor in ("adelante", "atras"):
+        r = cliente.post("/consultas", json={"kb_id": KB_ACADEMICO, "motor": motor, "hechos": hechos})
+        session_id = r.json()["session_id"]
+        cliente.post(f"/consultas/{session_id}/inferir")
+        resultados.append(cliente.get(f"/consultas/{session_id}/dictamen").json()["final_outcome"])
+    assert resultados == ["Calificación C - Regular"] * 2
+
+
+def test_motor_atras_con_certeza(cliente):
+    r = cliente.post("/consultas", json={
+        "kb_id": KB_EJEMPLO, "motor": "atras", "hechos": HECHOS_EJEMPLO,
+        "fc_reglas": {"rule_01": 0.8}, "fc_hechos": {"promedio": 0.9}})
+    session_id = r.json()["session_id"]
+    memoria = cliente.post(f"/consultas/{session_id}/inferir").json()
+    assert memoria["derived_facts"]["dictamen"]["certainty_factor"] == 0.72
+
+
+# --- Persistencia de sesiones (G11) ---
+
+class _AlmacenFalso:
+    """Imita ESBConverter de G11 guardando en un diccionario."""
+    guardadas: dict = {}
+
+    def __init__(self, schema_manager=None, validate=True):
+        pass
+
+    def save_session_to_dir(self, session, directory, *, knowledge=None):
+        _AlmacenFalso.guardadas[session["session_id"]] = copy.deepcopy(session)
+        return directory / f"sesion_{session['session_id']}.json"
+
+    def load_session_from_dir(self, directory, session_id, *, knowledge=None):
+        if session_id not in _AlmacenFalso.guardadas:
+            raise FileNotFoundError(session_id)
+        return copy.deepcopy(_AlmacenFalso.guardadas[session_id])
+
+    def list_sessions(self, directory):
+        return sorted(_AlmacenFalso.guardadas)
+
+
+class _G11Falso:
+    ESBConverter = _AlmacenFalso
+
+    class IncompatibleStructureError(ValueError):
+        pass
+
+
+def test_persistencia_sin_g11_responde_503(tmp_path):
+    cliente = _cliente(ServicioESB(Integraciones(deshabilitar={"G11"}), carpeta_sesiones=tmp_path))
+    try:
+        assert cliente.get("/salud").json()["modulos"]["G11 ESBConverter"] == "simulado"
+        session_id = nueva_sesion(cliente, {"tipo_consulta": "Calificacion"})
+        r = cliente.post(f"/consultas/{session_id}/guardar")
+        assert r.status_code == 503 and "G11" in r.json()["detail"]
+        assert cliente.get("/sesiones-guardadas").status_code == 503
+    finally:
+        app.dependency_overrides.clear()
+
+
+def _flujo_guardar_y_restaurar(cliente):
+    session_id = consultar(cliente, {"tipo_consulta": "Calificacion", "puntaje_final": 95})
+    r = cliente.post(f"/consultas/{session_id}/guardar")
+    assert r.status_code == 200 and r.json()["ruta"].endswith(f"sesion_{session_id}.json")
+    assert session_id in cliente.get("/sesiones-guardadas").json()
+    return session_id
+
+
+def test_guardar_y_restaurar_con_g11(tmp_path):
+    _AlmacenFalso.guardadas = {}
+    integraciones = Integraciones()
+    integraciones._g11 = _G11Falso
+    servicio = ServicioESB(integraciones, carpeta_sesiones=tmp_path)
+    cliente = _cliente(servicio)
+    try:
+        session_id = _flujo_guardar_y_restaurar(cliente)
+        url = f"/sesiones-guardadas/{session_id}/restaurar"
+        assert cliente.post(url, json={"kb_id": KB_ACADEMICO}).status_code == 409  # sigue abierta
+
+        otro = _cliente(ServicioESB(integraciones, carpeta_sesiones=tmp_path))
+        r = otro.post(url, json={"kb_id": KB_ACADEMICO})
+        assert r.status_code == 201 and r.json()["session_id"] == session_id
+        assert otro.get(f"/consultas/{session_id}/dictamen").json()["final_outcome"] == DICTAMEN_A
+        assert otro.post("/sesiones-guardadas/sess_x/restaurar",
+                         json={"kb_id": KB_ACADEMICO}).status_code == 404
+        assert otro.post(url, json={"kb_id": "kb_999"}).status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_restaurar_no_choca_con_ids_nuevos(tmp_path):
+    _AlmacenFalso.guardadas = {}
+    integraciones = Integraciones()
+    integraciones._g11 = _G11Falso
+    cliente = _cliente(ServicioESB(integraciones, carpeta_sesiones=tmp_path))
+    try:
+        session_id = _flujo_guardar_y_restaurar(cliente)
+        nuevo = _cliente(ServicioESB(integraciones, carpeta_sesiones=tmp_path))
+        nuevo.post(f"/sesiones-guardadas/{session_id}/restaurar", json={"kb_id": KB_ACADEMICO})
+        assert nueva_sesion(nuevo) != session_id
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_persistencia_con_g11_real(tmp_path):
+    if not hasattr(pytest.importorskip("grupo_11_storage"), "ESBConverter"):
+        pytest.skip("ESBConverter (G11) todavía no está en esta rama")
+    cliente = _cliente(ServicioESB(carpeta_sesiones=tmp_path))
+    try:
+        session_id = _flujo_guardar_y_restaurar(cliente)
+        assert (tmp_path / f"sesion_{session_id}.json").is_file()
+        otro = _cliente(ServicioESB(carpeta_sesiones=tmp_path))
+        r = otro.post(f"/sesiones-guardadas/{session_id}/restaurar", json={"kb_id": KB_ACADEMICO})
+        assert r.status_code == 201
+        assert otro.get(f"/consultas/{session_id}/dictamen").json()["final_outcome"] == DICTAMEN_A
+        r = otro.post("/sesiones-guardadas/sess_nada/restaurar", json={"kb_id": KB_ACADEMICO})
+        assert r.status_code == 404
+    finally:
+        app.dependency_overrides.clear()

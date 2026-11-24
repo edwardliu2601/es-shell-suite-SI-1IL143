@@ -21,11 +21,12 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
 from .modelos import (BaseCargada, ConocimientoDominio, ConsultaCreada, DictamenSalida,
                       ExplicacionHow, ExplicacionWhy, HechosEntrada, MemoriaTrabajo,
-                      NuevaConsulta, Pregunta, Salud, SiguientePregunta, Traza)
+                      NuevaConsulta, Pregunta, RestaurarSesion, Salud, SesionGuardada,
+                      SiguientePregunta, Traza)
 from .servicio import (ContratoInvalido, EstadoInvalido, ModuloNoDisponible, NoEncontrado,
                        ServicioESB)
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 
 app = FastAPI(
     title="ES-Shell Suite · API REST",
@@ -35,9 +36,11 @@ app = FastAPI(
         "(`conocimiento_dominio.json`), ejecutar una consulta sobre su memoria de "
         "trabajo (`memoria_trabajo.json`) y obtener el dictamen con sus "
         "explicaciones HOW/WHY (`dictamen_salida.json`).\n\n"
-        "Valida con SchemaManager (G4), infiere con ForwardEngine (G5), calcula la "
-        "certeza con UncertaintyEngine (G7), explica con XAIExplainer (G8) y audita "
-        "bases con KBAuditor (G3). `GET /salud` indica qué módulos están conectados.\n\n"
+        "Valida con SchemaManager (G4), infiere con ForwardEngine (G5) o BackwardEngine "
+        "(G6), calcula la certeza con UncertaintyEngine (G7), explica con XAIExplainer "
+        "(G8), audita bases con KBAuditor (G3), genera reportes con ReportGenerator (G9) "
+        "y guarda sesiones con ESBConverter (G11). `GET /salud` indica qué módulos están "
+        "conectados.\n\n"
         "Bases precargadas: `kb_academico` (base de la demo, de G4) y `kb_ejemplo` "
         "(sección 4.2 de la guía)."
     ),
@@ -46,6 +49,7 @@ app = FastAPI(
         {"name": "Conocimiento", "description": "Carga y consulta de bases de conocimiento."},
         {"name": "Consultas", "description": "Sesiones, memoria de trabajo, inferencia y dictamen."},
         {"name": "Explicación", "description": "Respuestas HOW, WHY y traza de ejecución."},
+        {"name": "Persistencia", "description": "Guardar y restaurar sesiones en disco (G11)."},
     ],
 )
 
@@ -141,8 +145,8 @@ def iniciar_consulta(datos: NuevaConsulta, servicio: ServicioESB = Servicio) -> 
     """Crea una sesión sobre `kb_id` con el motor indicado y los hechos iniciales.
 
     Los hechos se validan contra la base (tipo, opciones y rango). `fc_reglas` y
-    `fc_hechos` son opcionales y los usa G7 para la certeza del resultado. Mientras
-    G6 no publique su motor, `atras` usa el encadenamiento hacia adelante.
+    `fc_hechos` son opcionales y los usa G7 para la certeza del resultado. Con
+    `motor: "atras"`, BackwardEngine (G6) decide qué preguntar y verifica la meta.
     """
     return servicio.iniciar_consulta(datos.kb_id, datos.motor, datos.hechos,
                                      datos.fc_reglas, datos.fc_hechos)
@@ -207,6 +211,36 @@ def generar_reporte(session_id: str, formato: Literal["md", "html"] = "md",
     if formato == "html":
         return HTMLResponse(contenido)
     return PlainTextResponse(contenido, media_type="text/markdown; charset=utf-8")
+
+
+# --- Persistencia ---
+
+ERROR_G11 = {503: {"description": "La persistencia (G11) todavía no está en el repositorio."}}
+
+
+@app.post("/consultas/{session_id}/guardar", response_model=SesionGuardada,
+          tags=["Persistencia"], summary="Guardar una sesión en disco",
+          responses={**ERRORES_SESION, **ERROR_CONTRATO, **ERROR_G11})
+def guardar_sesion(session_id: str, servicio: ServicioESB = Servicio) -> dict:
+    """Guarda `memoria_trabajo.json` de la sesión con ESBConverter (G11), validada contra su base."""
+    return servicio.guardar_sesion(session_id)
+
+
+@app.get("/sesiones-guardadas", response_model=list[str], tags=["Persistencia"],
+         summary="Listar sesiones guardadas", responses=ERROR_G11)
+def listar_sesiones_guardadas(servicio: ServicioESB = Servicio) -> list[str]:
+    return servicio.listar_sesiones_guardadas()
+
+
+@app.post("/sesiones-guardadas/{session_id}/restaurar", response_model=ConsultaCreada,
+          status_code=201, tags=["Persistencia"], summary="Restaurar una sesión guardada",
+          responses={404: {"description": "No existe la sesión guardada o la base."},
+                     409: {"description": "La sesión ya está abierta."},
+                     **ERROR_CONTRATO, **ERROR_G11})
+def restaurar_sesion(session_id: str, datos: RestaurarSesion,
+                     servicio: ServicioESB = Servicio) -> dict:
+    """Vuelve a abrir una sesión guardada para seguir consultándola o pedir su dictamen."""
+    return servicio.restaurar_sesion(session_id, datos.kb_id, datos.motor)
 
 
 # --- Explicacion ---
