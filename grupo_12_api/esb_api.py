@@ -14,7 +14,7 @@ La documentacion interactiva queda en /docs (Swagger) y /redoc.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
@@ -22,9 +22,10 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from .modelos import (BaseCargada, ConocimientoDominio, ConsultaCreada, DictamenSalida,
                       ExplicacionHow, ExplicacionWhy, HechosEntrada, MemoriaTrabajo,
                       NuevaConsulta, Pregunta, Salud, SiguientePregunta, Traza)
-from .servicio import ContratoInvalido, EstadoInvalido, NoEncontrado, ServicioESB
+from .servicio import (ContratoInvalido, EstadoInvalido, ModuloNoDisponible, NoEncontrado,
+                       ServicioESB)
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 app = FastAPI(
     title="ES-Shell Suite · API REST",
@@ -34,8 +35,9 @@ app = FastAPI(
         "(`conocimiento_dominio.json`), ejecutar una consulta sobre su memoria de "
         "trabajo (`memoria_trabajo.json`) y obtener el dictamen con sus "
         "explicaciones HOW/WHY (`dictamen_salida.json`).\n\n"
-        "Valida con SchemaManager (G4), infiere con ForwardEngine (G5) y explica con "
-        "XAIExplainer (G8). `GET /salud` indica qué módulos están conectados.\n\n"
+        "Valida con SchemaManager (G4), infiere con ForwardEngine (G5), calcula la "
+        "certeza con UncertaintyEngine (G7), explica con XAIExplainer (G8) y audita "
+        "bases con KBAuditor (G3). `GET /salud` indica qué módulos están conectados.\n\n"
         "Bases precargadas: `kb_academico` (base de la demo, de G4) y `kb_ejemplo` "
         "(sección 4.2 de la guía)."
     ),
@@ -63,6 +65,11 @@ async def _no_encontrado(_: Request, exc: NoEncontrado) -> JSONResponse:
 @app.exception_handler(ContratoInvalido)
 async def _contrato_invalido(_: Request, exc: ContratoInvalido) -> JSONResponse:
     return JSONResponse(status_code=422, content={"detail": str(exc), "errores": exc.errores})
+
+
+@app.exception_handler(ModuloNoDisponible)
+async def _modulo_no_disponible(_: Request, exc: ModuloNoDisponible) -> JSONResponse:
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 
 @app.exception_handler(EstadoInvalido)
@@ -103,6 +110,20 @@ def obtener_conocimiento(kb_id: str, servicio: ServicioESB = Servicio) -> dict:
     return servicio.obtener_conocimiento(kb_id)
 
 
+@app.get("/conocimiento/{kb_id}/auditoria", tags=["Conocimiento"],
+         summary="Auditar una base de conocimiento",
+         responses={404: {"description": "La base no existe."},
+                    503: {"description": "El auditor (G3) todavía no está en el repositorio."}})
+def auditar_conocimiento(kb_id: str, formato: Literal["json", "md"] = "json",
+                         servicio: ServicioESB = Servicio) -> Any:
+    """Reporte de G3: contradicciones, redundancias, condiciones inalcanzables, ciclos y
+    tabla de decisión. `md` devuelve el mismo reporte en Markdown."""
+    reporte = servicio.auditar_conocimiento(kb_id)
+    if formato == "md":
+        return PlainTextResponse(reporte.to_markdown(), media_type="text/markdown; charset=utf-8")
+    return reporte.to_dict()
+
+
 @app.get("/conocimiento/{kb_id}/preguntas", response_model=list[Pregunta], tags=["Conocimiento"],
          summary="Listar las preguntas de una base",
          responses={404: {"description": "La base no existe."}})
@@ -119,10 +140,12 @@ def listar_preguntas(kb_id: str, servicio: ServicioESB = Servicio) -> list[dict]
 def iniciar_consulta(datos: NuevaConsulta, servicio: ServicioESB = Servicio) -> dict:
     """Crea una sesión sobre `kb_id` con el motor indicado y los hechos iniciales.
 
-    Los hechos se validan contra la base (tipo, opciones y rango). Mientras G6 no
-    publique su motor, `atras` usa el encadenamiento hacia adelante.
+    Los hechos se validan contra la base (tipo, opciones y rango). `fc_reglas` y
+    `fc_hechos` son opcionales y los usa G7 para la certeza del resultado. Mientras
+    G6 no publique su motor, `atras` usa el encadenamiento hacia adelante.
     """
-    return servicio.iniciar_consulta(datos.kb_id, datos.motor, datos.hechos)
+    return servicio.iniciar_consulta(datos.kb_id, datos.motor, datos.hechos,
+                                     datos.fc_reglas, datos.fc_hechos)
 
 
 @app.post("/consultas/{session_id}/hechos", response_model=MemoriaTrabajo,
@@ -134,7 +157,7 @@ def registrar_hechos(session_id: str, datos: HechosEntrada,
 
     Se descartan las conclusiones anteriores; se recalculan al volver a inferir.
     """
-    return servicio.registrar_hechos(session_id, datos.hechos)
+    return servicio.registrar_hechos(session_id, datos.hechos, datos.fc_hechos)
 
 
 @app.get("/consultas/{session_id}/siguiente-pregunta", response_model=SiguientePregunta,
@@ -149,7 +172,7 @@ def siguiente_pregunta(session_id: str, servicio: ServicioESB = Servicio) -> dic
           summary="Ejecutar la inferencia",
           responses={**ERRORES_SESION, 409: {"description": "La sesión no tiene hechos."}})
 def inferir(session_id: str, servicio: ServicioESB = Servicio) -> dict:
-    """Ejecuta el motor (G5) y devuelve la memoria de trabajo actualizada.
+    """Ejecuta el motor (G5), calcula la certeza (G7) y devuelve la memoria actualizada.
 
     Incluye `halted_reason`: `quiescence` cuando no quedan reglas por activar.
     Si ninguna regla se activó, `derived_facts` queda vacío.
